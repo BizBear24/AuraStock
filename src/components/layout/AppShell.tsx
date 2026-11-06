@@ -1,4 +1,4 @@
-import { Boxes, LayoutDashboard, LogOut, User, Warehouse } from 'lucide-react'
+import { Boxes, LayoutDashboard, LogOut, Package, User, Warehouse } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/features/auth/AuthProvider'
@@ -6,6 +6,7 @@ import { useWorkspace } from '@/features/organizations/WorkspaceProvider'
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/products', label: 'Products', icon: Package, end: false },
   { to: '/inventories', label: 'Inventories', icon: Warehouse, end: false },
   { to: '/profile', label: 'Profile', icon: User, end: false },
 ] as const
@@ -94,7 +95,7 @@ export function AppShell() {
         </main>
         <nav
           aria-label="Primary mobile"
-          className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-3 border-t border-line bg-bg-2 pb-[env(safe-area-inset-bottom)] md:hidden"
+          className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-4 border-t border-line bg-bg-2 pb-[env(safe-area-inset-bottom)] md:hidden"
         >
           {NAV.map(({ to, label, icon: Icon, end }) => (
             <NavLink

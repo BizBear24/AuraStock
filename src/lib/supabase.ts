@@ -15,6 +15,15 @@ export const supabase = createClient(url ?? 'http://localhost:54321', anonKey ??
 
 /** Convert a Supabase/Postgres error into a safe, user-facing message. */
 export function errorMessage(error: unknown, fallback = 'Something went wrong. Please try again.'): string {
+  if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
+    const text = `${'message' in error ? String(error.message) : ''} ${'details' in error ? String(error.details) : ''}`
+    if (text.includes('products_sku_uq')) return 'Another product in this inventory already uses that SKU.'
+    if (text.includes('products_barcode_uq')) return 'Another product in this inventory already uses that barcode.'
+    if (text.includes('products_qr_uq')) return 'Another product in this inventory already uses that QR code.'
+    if (text.includes('categories_name_uq')) return 'That category already exists.'
+    if (text.includes('tags_name_uq')) return 'That tag already exists.'
+    return 'That value already exists.'
+  }
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
     return error.message
   }
