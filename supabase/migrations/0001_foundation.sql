@@ -1,6 +1,5 @@
 -- Phase 1 foundation: profiles, organizations, memberships, inventories, RLS.
 
-create extension if not exists "pgcrypto";
 
 create type public.org_role as enum ('owner', 'admin', 'editor', 'viewer');
 

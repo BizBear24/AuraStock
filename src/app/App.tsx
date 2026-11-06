@@ -13,6 +13,7 @@ const OverviewPage = lazy(() => import('@/features/organizations/OverviewPage').
 const InventoriesPage = lazy(() => import('@/features/organizations/InventoriesPage').then((m) => ({ default: m.InventoriesPage })))
 const ProductsPage = lazy(() => import('@/features/products/ProductsPage').then((m) => ({ default: m.ProductsPage })))
 const ProductDetailPage = lazy(() => import('@/features/products/ProductDetailPage').then((m) => ({ default: m.ProductDetailPage })))
+const MovementsPage = lazy(() => import('@/features/stock/MovementsPage').then((m) => ({ default: m.MovementsPage })))
 const ProfilePage = lazy(() => import('@/features/auth/ProfilePage').then((m) => ({ default: m.ProfilePage })))
 
 const queryClient = new QueryClient({
@@ -60,7 +61,8 @@ export function App() {
                   <Route index element={<OverviewPage />} />
                   <Route path="products" element={<ProductsPage />} />
                   <Route path="products/:id" element={<ProductDetailPage />} />
-                  <Route path="inventories"element={<InventoriesPage />} />
+                  <Route path="movements" element={<MovementsPage />} />
+                  <Route path="inventories" element={<InventoriesPage />} />
                   <Route path="profile" element={<ProfilePage />} />
                 </Route>
               </Route>

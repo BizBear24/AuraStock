@@ -15,6 +15,9 @@ export const supabase = createClient(url ?? 'http://localhost:54321', anonKey ??
 
 /** Convert a Supabase/Postgres error into a safe, user-facing message. */
 export function errorMessage(error: unknown, fallback = 'Something went wrong. Please try again.'): string {
+  if (error && typeof error === 'object' && 'code' in error && error.code === '23503') {
+    return 'This record is referenced by other data (for example stock history) and cannot be deleted. Keep it archived instead.'
+  }
   if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
     const text = `${'message' in error ? String(error.message) : ''} ${'details' in error ? String(error.details) : ''}`
     if (text.includes('products_sku_uq')) return 'Another product in this inventory already uses that SKU.'

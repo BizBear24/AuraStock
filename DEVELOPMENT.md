@@ -19,7 +19,10 @@ Typecheck, lint and test before every commit: `npm run typecheck && npm run lint
 - [x] Phase 2 – Core inventory: products (create, edit, archive, restore, duplicate, delete-after-archive, bulk archive/category), categories, tags, debounced search (name/SKU/barcode), filters, sorting, pagination, product detail, dashboard with real metrics and chart; migration 0002
   - [ ] Unverified against a live database: migration 0002, RLS, unique-constraint messages
   - [ ] Deferred: product images (needs Storage bucket + upload policy), custom fields, saved filters, dashboard date filters and recent activity (needs stock movements, Phase 3)
-- [ ] Phase 3 – Stock operations (transactional movements)
+- [x] Phase 3 – Stock operations: stock in/out/adjustment/correction through `record_stock_movement()` (row lock, idempotency key, immutable ledger, audit log), movement history (global + per product), dashboard flow chart and recent activity; migration 0003
+  - [x] Tested against real PostgreSQL (PGlite): RLS isolation, overdraw rejection, idempotent replay, append-only ledger, expired/archived rules (`supabase/tests/database.test.ts`)
+  - [ ] Not tested: true parallel transactions (PGlite is single-connection) - run the two-session check in DATABASE.md on a real Supabase project
+  - [ ] Deferred: UI to link a correction to the movement it fixes (column exists), reversal shortcut
 - [ ] Phase 4 – Scanning
 - [ ] Phase 5 – Offline engine
 - [ ] Phase 6 – Alerts, import/export, reports

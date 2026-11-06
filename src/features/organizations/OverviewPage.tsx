@@ -1,12 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, Legend, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Button } from '@/components/ui/button'
 import { PageHeader, Panel } from '@/components/ui/panel'
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states'
 import { can } from '@/domain/permissions'
 import { errorMessage } from '@/lib/supabase'
 import { fetchCategoryStock, fetchSummary } from '@/features/products/api'
+import { fetchMovementSummary, listMovements } from '@/features/stock/api'
+import { MovementList } from '@/features/stock/MovementList'
 import { useWorkspace } from './WorkspaceProvider'
 
 function Metric({ label, value, to, tone }: { label: string; value: number; to?: string; tone?: 'warn' | 'crit' }) {
@@ -32,6 +34,13 @@ export function OverviewPage() {
   const inventoryId = inventory?.id ?? ''
   const summary = useQuery({ queryKey: ['summary', inventoryId], queryFn: () => fetchSummary(inventoryId), enabled: Boolean(inventoryId) })
   const byCategory = useQuery({ queryKey: ['category-stock', inventoryId], queryFn: () => fetchCategoryStock(inventoryId), enabled: Boolean(inventoryId) })
+
+  const flow = useQuery({ queryKey: ['movement-summary', inventoryId], queryFn: () => fetchMovementSummary(inventoryId, 14), enabled: Boolean(inventoryId) })
+  const recent = useQuery({
+    queryKey: ['movements', inventoryId, 'recent'],
+    queryFn: () => listMovements({ inventoryId, type: 'all', page: 0, pageSize: 8 }),
+    enabled: Boolean(inventoryId),
+  })
 
   if (!inventory) {
     return (
@@ -98,7 +107,41 @@ export function OverviewPage() {
           </div>
         )}
       </Panel>
-      <p className="mt-3 text-xs text-fg-2">Recent activity and movement summaries appear once stock operations ship in the next phase.</p>
+
+      <Panel className="mt-4 p-4">
+        <h2 className="mb-3 font-semibold">Stock movement, last 14 days</h2>
+        {flow.isPending && <LoadingState />}
+        {flow.isError && <ErrorState message={errorMessage(flow.error)} />}
+        {flow.data && !flow.data.some((d) => d.units_in > 0 || d.units_out > 0) && <p className="text-sm text-fg-2">No movements in this period.</p>}
+        {flow.data && flow.data.some((d) => d.units_in > 0 || d.units_out > 0) && (
+          <div className="h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={flow.data} margin={{ left: 0, right: 8, top: 4 }}>
+                <CartesianGrid stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="day" tickFormatter={(d: string) => d.slice(5)} tick={{ fill: 'var(--fg-2)', fontSize: 12 }} stroke="var(--border)" />
+                <YAxis tick={{ fill: 'var(--fg-2)', fontSize: 12 }} stroke="var(--border)" />
+                <Tooltip contentStyle={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 6 }} cursor={{ fill: 'var(--surface)' }} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="units_in" name="In" fill="var(--ok)" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="units_out" name="Out" fill="var(--fg-2)" radius={[2, 2, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </Panel>
+
+      <Panel className="mt-4 overflow-hidden">
+        <div className="flex items-center justify-between border-b border-line px-4 py-2">
+          <h2 className="font-semibold">Recent activity</h2>
+          <Link to="/movements" className="text-sm underline">
+            All movements
+          </Link>
+        </div>
+        {recent.isPending && <LoadingState />}
+        {recent.isError && <ErrorState message={errorMessage(recent.error)} />}
+        {recent.data && recent.data.rows.length === 0 && <p className="p-4 text-sm text-fg-2">No stock movements yet.</p>}
+        {recent.data && recent.data.rows.length > 0 && <MovementList rows={recent.data.rows} />}
+      </Panel>
     </>
   )
 }

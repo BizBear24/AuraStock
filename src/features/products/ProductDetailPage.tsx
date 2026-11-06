@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Archive, ArchiveRestore, Copy, Pencil, Trash2 } from 'lucide-react'
+import { ArrowLeft, Archive, ArchiveRestore, ArrowLeftRight, Copy, Pencil, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -9,10 +9,14 @@ import { ExpiryBadge, StockBadge } from '@/components/ui/product-badges'
 import { ErrorState, LoadingState } from '@/components/ui/states'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { can } from '@/domain/permissions'
+import type { MovementType } from '@/domain/stock'
 import { errorMessage } from '@/lib/supabase'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { useWorkspace } from '@/features/organizations/WorkspaceProvider'
 import { deleteProduct, duplicateProduct, getProduct, setArchived } from './api'
+import { listMovements } from '@/features/stock/api'
+import { MovementList } from '@/features/stock/MovementList'
+import { StockMovementDialog } from '@/features/stock/StockMovementDialog'
 import { ProductFormDialog } from './ProductFormDialog'
 
 export function ProductDetailPage() {
@@ -23,8 +27,19 @@ export function ProductDetailPage() {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [stockType, setStockType] = useState<MovementType | null>(null)
+  const [lastType, setLastType] = useState<MovementType>('in')
 
   const query = useQuery({ queryKey: ['product', id], queryFn: () => getProduct(id), enabled: Boolean(id) })
+  const history = useQuery({
+    queryKey: ['movements', query.data?.inventory_id, id, 'all', 0],
+    queryFn: () => listMovements({ inventoryId: query.data!.inventory_id, productId: id, type: 'all', page: 0, pageSize: 10 }),
+    enabled: Boolean(query.data),
+  })
+  const openStock = (t: MovementType) => {
+    setLastType(t)
+    setStockType(t)
+  }
   const afterChange = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['products'] }),
@@ -109,7 +124,16 @@ export function ProductDetailPage() {
             <StockBadge state={p.stock_state} />
             <ExpiryBadge expiresOn={p.expires_on} />
           </div>
-          <p className="mt-3 text-xs text-fg-2">Stock changes are recorded as movements (coming in the next phase).</p>
+          {canWrite && !p.archived_at && (
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <Button variant="primary" onClick={() => openStock('in')}>
+                Stock in
+              </Button>
+              <Button onClick={() => openStock('out')}>Stock out</Button>
+              <Button onClick={() => openStock('adjustment')}>Adjust</Button>
+              <Button onClick={() => openStock('correction')}>Correct</Button>
+            </div>
+          )}
         </Panel>
 
         <Panel className="p-4">
@@ -134,6 +158,22 @@ export function ProductDetailPage() {
         </Panel>
       </div>
 
+      <Panel className="mt-4 overflow-hidden">
+        <h2 className="flex items-center gap-2 border-b border-line px-4 py-2 font-semibold">
+          <ArrowLeftRight className="h-4 w-4" aria-hidden /> Stock history
+        </h2>
+        {history.isPending && <LoadingState label="Loading history" />}
+        {history.isError && <ErrorState message={errorMessage(history.error)} onRetry={() => void history.refetch()} />}
+        {history.data && history.data.rows.length === 0 && <p className="p-4 text-sm text-fg-2">No stock movements yet.</p>}
+        {history.data && history.data.rows.length > 0 && <MovementList rows={history.data.rows} showProduct={false} />}
+        {history.data && history.data.total > history.data.rows.length && (
+          <p className="border-t border-line px-4 py-2 text-xs text-fg-2">
+            Showing latest {history.data.rows.length} of {history.data.total}. <Link to="/movements" className="underline">All movements</Link>
+          </p>
+        )}
+      </Panel>
+
+      <StockMovementDialog open={stockType !== null} onOpenChange={(o) => !o && setStockType(null)} product={p} initialType={stockType ?? lastType} />
       <ProductFormDialog open={editing} onOpenChange={setEditing} inventoryId={p.inventory_id} product={p} />
       <ConfirmDialog
         open={confirmDelete}
