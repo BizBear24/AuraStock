@@ -8,6 +8,7 @@ import { ForgotPasswordPage, LoginPage, ResetPasswordPage, SignUpPage } from '@/
 import { OnboardingPage } from '@/features/organizations/OnboardingPage'
 import { WorkspaceProvider } from '@/features/organizations/WorkspaceProvider'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import { OfflineProvider } from '@/offline/OfflineProvider'
 
 const OverviewPage = lazy(() => import('@/features/organizations/OverviewPage').then((m) => ({ default: m.OverviewPage })))
 const InventoriesPage = lazy(() => import('@/features/organizations/InventoriesPage').then((m) => ({ default: m.InventoriesPage })))
@@ -15,6 +16,7 @@ const ProductsPage = lazy(() => import('@/features/products/ProductsPage').then(
 const ProductDetailPage = lazy(() => import('@/features/products/ProductDetailPage').then((m) => ({ default: m.ProductDetailPage })))
 const MovementsPage = lazy(() => import('@/features/stock/MovementsPage').then((m) => ({ default: m.MovementsPage })))
 const ScanPage = lazy(() => import('@/features/scan/ScanPage').then((m) => ({ default: m.ScanPage })))
+const SyncPage = lazy(() => import('@/offline/SyncPage').then((m) => ({ default: m.SyncPage })))
 const ProfilePage = lazy(() => import('@/features/auth/ProfilePage').then((m) => ({ default: m.ProfilePage })))
 
 const queryClient = new QueryClient({
@@ -27,9 +29,11 @@ function RequireAuth() {
   if (loading) return <LoadingState label="Restoring session" />
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />
   return (
-    <WorkspaceProvider onboarding={<OnboardingPage />}>
-      <Outlet />
-    </WorkspaceProvider>
+    <OfflineProvider key={user.id} userId={user.id}>
+      <WorkspaceProvider onboarding={<OnboardingPage />}>
+        <Outlet />
+      </WorkspaceProvider>
+    </OfflineProvider>
   )
 }
 
@@ -63,6 +67,7 @@ export function App() {
                   <Route path="products" element={<ProductsPage />} />
                   <Route path="products/:id" element={<ProductDetailPage />} />
                   <Route path="scan" element={<ScanPage />} />
+                  <Route path="sync" element={<SyncPage />} />
                   <Route path="movements" element={<MovementsPage />} />
                   <Route path="inventories" element={<InventoriesPage />} />
                   <Route path="profile" element={<ProfilePage />} />

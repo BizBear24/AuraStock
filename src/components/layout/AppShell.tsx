@@ -1,5 +1,10 @@
 import { ArrowLeftRight, Boxes, LayoutDashboard, LogOut, Package, ScanLine, User, Warehouse } from 'lucide-react'
+import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
+import { ConfirmDialog } from '@/components/ui/dialog'
+import { useOffline } from '@/offline/OfflineProvider'
+import { SyncBadge, SyncBanner } from '@/offline/SyncStatus'
+import { useInventoryCache } from '@/offline/useInventoryCache'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { useWorkspace } from '@/features/organizations/WorkspaceProvider'
@@ -50,6 +55,11 @@ function WorkspaceSwitcher() {
 
 export function AppShell() {
   const { user, signOut } = useAuth()
+  const { inventory } = useWorkspace()
+  const { snapshot } = useOffline()
+  const [confirmSignOut, setConfirmSignOut] = useState(false)
+  const unsynced = snapshot.pending + snapshot.failed + snapshot.conflicts
+  useInventoryCache(inventory?.id)
   return (
     <div className="flex h-full">
       <aside className="hidden w-56 shrink-0 flex-col border-r border-line bg-bg-2 md:flex">
@@ -77,7 +87,7 @@ export function AppShell() {
           <p className="truncate px-3 pb-1 text-xs text-fg-2">{user?.email}</p>
           <button
             type="button"
-            onClick={() => void signOut()}
+            onClick={() => (unsynced > 0 ? setConfirmSignOut(true) : void signOut())}
             className="flex h-9 w-full items-center gap-2 rounded-md px-3 text-sm text-fg-2 hover:bg-surface hover:text-fg"
           >
             <LogOut className="h-4 w-4" aria-hidden /> Sign out
@@ -91,13 +101,24 @@ export function AppShell() {
           <div className="min-w-0 flex-1 md:max-w-xl">
             <WorkspaceSwitcher />
           </div>
+          <SyncBadge />
           <NavLink to="/profile" aria-label="Profile" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-fg-2 hover:bg-surface md:hidden">
             <User className="h-4 w-4" aria-hidden />
           </NavLink>
         </header>
+        <SyncBanner />
         <main className="min-h-0 flex-1 overflow-y-auto p-3 pb-20 md:p-6 md:pb-6">
           <Outlet />
         </main>
+        <ConfirmDialog
+          open={confirmSignOut}
+          onOpenChange={setConfirmSignOut}
+          title="Sign out with unsynced changes?"
+          description={`${unsynced} change${unsynced === 1 ? ' is' : 's are'} still saved only on this device. They stay here and will be sent the next time you sign in on this device. Until then, other devices will not see them.`}
+          confirmLabel="Sign out anyway"
+          destructive
+          onConfirm={() => void signOut()}
+        />
         <nav
           aria-label="Primary mobile"
           className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-5 border-t border-line bg-bg-2 pb-[env(safe-area-inset-bottom)] md:hidden"

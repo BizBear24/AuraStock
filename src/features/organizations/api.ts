@@ -1,4 +1,7 @@
 import { supabase } from '@/lib/supabase'
+import { getMeta, setMeta } from '@/offline/db'
+import { bestEffort } from '@/offline/local'
+import { readThrough } from '@/offline/resilient'
 import type { OrgRole } from '@/domain/permissions'
 
 export interface Membership {
@@ -22,7 +25,7 @@ interface MembershipRow {
   organizations: { name: string } | null
 }
 
-export async function fetchMemberships(userId: string): Promise<Membership[]> {
+async function fetchMembershipsRemote(userId: string): Promise<Membership[]> {
   const { data, error } = await supabase
     .from('organization_members')
     .select('organization_id, role, organizations(name)')
@@ -42,7 +45,7 @@ export async function createOrganization(name: string): Promise<string> {
   return data as string
 }
 
-export async function fetchInventories(organizationId: string): Promise<Inventory[]> {
+async function fetchInventoriesRemote(organizationId: string): Promise<Inventory[]> {
   const { data, error } = await supabase
     .from('inventories')
     .select('id, organization_id, name, description, archived_at, created_at')
@@ -72,4 +75,32 @@ export async function createInventory(input: {
     .single<Inventory>()
   if (error) throw error
   return data
+}
+
+/** Cached after each successful load so the app can open offline. */
+export function fetchMemberships(userId: string): Promise<Membership[]> {
+  return readThrough(
+    async () => {
+      const memberships = await fetchMembershipsRemote(userId)
+      bestEffort(setMeta('workspace:memberships', memberships), 'cache memberships')
+      return memberships
+    },
+    async () => {
+      const cached = await getMeta<Membership[]>('workspace:memberships')
+      if (!cached) throw new Error('Your workspace has not been saved on this device yet. Connect once to use the app offline.')
+      return cached
+    },
+  )
+}
+
+export function fetchInventories(organizationId: string): Promise<Inventory[]> {
+  const key = `workspace:inventories:${organizationId}`
+  return readThrough(
+    async () => {
+      const inventories = await fetchInventoriesRemote(organizationId)
+      bestEffort(setMeta(key, inventories), 'cache inventories')
+      return inventories
+    },
+    async () => (await getMeta<Inventory[]>(key)) ?? [],
+  )
 }

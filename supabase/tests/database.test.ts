@@ -108,6 +108,18 @@ describe('product rules', () => {
     })
   })
 
+  it('bumps details_version for descriptive edits but not for stock changes', async () => {
+    const version = async () => Number((await db.query<{ v: number }>('select details_version as v from public.products where id = $1', [product])).rows[0]!.v)
+    const v0 = await version()
+    await as(A, () => db.query("update public.products set description = 'changed' where id = $1", [product]))
+    expect(await version()).toBe(v0 + 1)
+    await record(A, 'in', 1)
+    expect(await version()).toBe(v0 + 1)
+    await as(A, () => db.query("update public.products set description = 'changed' where id = $1", [product]))
+    expect(await version()).toBe(v0 + 1)
+    await record(A, 'out', 1)
+  })
+
   it('starts at zero and blocks direct quantity edits', async () => {
     await as(A, async () => {
       await rejects(db.query("insert into public.products (inventory_id, name, quantity, created_by) values ($1, 'P', 5, $2)", [invA, A]), /start at zero/)

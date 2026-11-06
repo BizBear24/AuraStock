@@ -28,7 +28,11 @@ Typecheck, lint and test before every commit: `npm run typecheck && npm run lint
   - [ ] **Not tested on real hardware**: camera decoding and a physical scanner have not been run on a phone or with a USB scanner - please try on your devices and report problems
   - [ ] Deferred: torch toggle, continuous multi-scan "batch" mode, offline lookup (Phase 5)
   - NFC is not part of this phase (Phase 8); no NFC support is claimed
-- [ ] Phase 5 – Offline engine
+- [x] Phase 5 – Offline engine: per-user IndexedDB (Dexie), durable operation queue with idempotency keys, sequential sync engine (backoff, auth pause, restart recovery, duplicate prevention), cached products/categories/tags/workspace, offline reads and writes for stock movements and product create/edit, version-aware conflict handling with a resolution screen, Offline/Waiting/Syncing/Online/Sync-failed indicators and `/sync` queue page; migration 0004
+  - [x] Tested with real IndexedDB semantics (fake-indexeddb) and real SQL (PGlite): engine ordering/retry/auth/restart/conflict, offline client, cache pull and local queries, details_version trigger
+  - [ ] **Not yet verified in a real browser with the network switched off** - please try: open the app online once, go offline in DevTools, record stock and edit a product, reconnect and watch the Sync badge
+  - [ ] Limitation: the app shell itself is not cached until Phase 9 (service worker), so a cold start with no connection will not load yet; an already-open tab keeps working
+  - [ ] Online-only for now: archive/restore, delete, duplicate, bulk actions, creating inventories/organizations, movement history, CSV/Excel (Phase 6)
 - [ ] Phase 6 – Alerts, import/export, reports
 - [ ] Phase 7 – Team collaboration
 - [ ] Phase 8 – Backups, Google Drive, NFC

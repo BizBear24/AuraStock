@@ -46,3 +46,7 @@ The function authorises, then runs `SELECT ... FOR UPDATE` on the product row. T
 Manual two-session check on a real database: open two SQL sessions as an editor, `begin;` in both, call `record_stock_movement(<product>, 'out', 5, gen_random_uuid())` in session 1, then in session 2 (it blocks), then `commit;` session 1 and observe session 2 fail with `Insufficient stock`.
 
 `movement_summary` buckets days in UTC.
+
+## Phase 5 (`0004_details_version.sql`)
+
+`products.details_version` increments when any descriptive column changes and is untouched by quantity-only changes. It is the optimistic-concurrency token for offline edits (see ARCHITECTURE.md).

@@ -15,6 +15,10 @@ export const supabase = createClient(url ?? 'http://localhost:54321', anonKey ??
 
 /** Convert a Supabase/Postgres error into a safe, user-facing message. */
 export function errorMessage(error: unknown, fallback = 'Something went wrong. Please try again.'): string {
+  const text = error && typeof error === 'object' && 'message' in error ? String(error.message) : String(error ?? '')
+  if (/failed to fetch|networkerror|network request failed|load failed|fetch failed/i.test(text)) {
+    return 'You appear to be offline or the server is unreachable. This needs a connection.'
+  }
   if (error && typeof error === 'object' && 'code' in error && error.code === '23503') {
     return 'This record is referenced by other data (for example stock history) and cannot be deleted. Keep it archived instead.'
   }
