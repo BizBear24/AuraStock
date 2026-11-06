@@ -13,7 +13,9 @@ Typecheck, lint and test before every commit: `npm run typecheck && npm run lint
 ## Feature checklist
 
 - [x] Phase 0 – Repository audit
-- [ ] Phase 1 – Foundation (design system, auth, organizations, migrations, RLS, navigation)
+- [x] Phase 1 – Foundation: design tokens, UI primitives, auth (sign up, login, logout, reset, session persistence, protected routes, profile), organization onboarding, inventory create/switch, responsive shell (sidebar + mobile bottom nav), migration 0001 with RLS
+  - [ ] Still unverified: migration applied to a live Supabase project, RLS cross-org isolation tests, Playwright e2e (need a Supabase project)
+  - [ ] Deferred from Phase 1: organization settings, member management (Phase 7), inventory-level memberships
 - [ ] Phase 2 – Core inventory (products, categories, tags, search, dashboard)
 - [ ] Phase 3 – Stock operations (transactional movements)
 - [ ] Phase 4 – Scanning
