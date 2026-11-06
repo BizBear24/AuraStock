@@ -31,3 +31,10 @@ Dependencies point downward only: UI → features → domain. Domain never impor
 ## Multi-tenancy
 
 organization → inventories → products. Users join organizations through `organization_members` with a role (`owner | admin | editor | viewer`). Every tenant table carries `organization_id` and is guarded by RLS using `is_org_member()` / `has_org_role()` helpers.
+
+## Scanning (Phase 4)
+
+- `src/domain/scan.ts`: pure logic (normalisation, repeat suppression, HID burst detection, camera error classification).
+- `src/features/scan`: `CameraScanner` (mounted = camera on, unmounted = device released), `useHidScanner` (global key listener; form fields are ignored unless marked `data-scan-input`), `ScanPage` (workflows).
+- Lookup priority is barcode, then QR value, then SKU, within the active inventory (`findProductByCode`).
+- Camera access requires HTTPS (or localhost) and user permission; otherwise the page offers manual entry and USB scanners.

@@ -23,7 +23,11 @@ Typecheck, lint and test before every commit: `npm run typecheck && npm run lint
   - [x] Tested against real PostgreSQL (PGlite): RLS isolation, overdraw rejection, idempotent replay, append-only ledger, expired/archived rules (`supabase/tests/database.test.ts`)
   - [ ] Not tested: true parallel transactions (PGlite is single-connection) - run the two-session check in DATABASE.md on a real Supabase project
   - [ ] Deferred: UI to link a correction to the movement it fixes (column exists), reversal shortcut
-- [ ] Phase 4 – Scanning
+- [x] Phase 4 – Scanning: `/scan` with camera decoding (ZXing: EAN-13/8, UPC-A/E, Code 128/39, ITF, Codabar, QR, Data Matrix), camera switching, permission/unavailable/in-use/insecure-context errors, USB/Bluetooth keyboard-wedge scanner support, manual entry, invalid and repeated scan handling, beep/vibrate feedback, scan -> open details / stock in / stock out / create product with the scanned code
+  - [x] Unit tested: code normalisation, repeat suppression, HID burst detection (including through real key events), camera error classification
+  - [ ] **Not tested on real hardware**: camera decoding and a physical scanner have not been run on a phone or with a USB scanner - please try on your devices and report problems
+  - [ ] Deferred: torch toggle, continuous multi-scan "batch" mode, offline lookup (Phase 5)
+  - NFC is not part of this phase (Phase 8); no NFC support is claimed
 - [ ] Phase 5 – Offline engine
 - [ ] Phase 6 – Alerts, import/export, reports
 - [ ] Phase 7 – Team collaboration

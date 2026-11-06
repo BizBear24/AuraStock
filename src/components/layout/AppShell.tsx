@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Boxes, LayoutDashboard, LogOut, Package, User, Warehouse } from 'lucide-react'
+import { ArrowLeftRight, Boxes, LayoutDashboard, LogOut, Package, ScanLine, User, Warehouse } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/features/auth/AuthProvider'
@@ -7,6 +7,7 @@ import { useWorkspace } from '@/features/organizations/WorkspaceProvider'
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/products', label: 'Products', icon: Package, end: false },
+  { to: '/scan', label: 'Scan', icon: ScanLine, end: false },
   { to: '/movements', label: 'Movements', icon: ArrowLeftRight, end: false },
   { to: '/inventories', label: 'Inventories', icon: Warehouse, end: false },
   { to: '/profile', label: 'Profile', icon: User, end: false },
@@ -90,6 +91,9 @@ export function AppShell() {
           <div className="min-w-0 flex-1 md:max-w-xl">
             <WorkspaceSwitcher />
           </div>
+          <NavLink to="/profile" aria-label="Profile" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-fg-2 hover:bg-surface md:hidden">
+            <User className="h-4 w-4" aria-hidden />
+          </NavLink>
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto p-3 pb-20 md:p-6 md:pb-6">
           <Outlet />
@@ -98,18 +102,34 @@ export function AppShell() {
           aria-label="Primary mobile"
           className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-5 border-t border-line bg-bg-2 pb-[env(safe-area-inset-bottom)] md:hidden"
         >
-          {NAV.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                cn('flex h-14 flex-col items-center justify-center gap-0.5 text-[11px]', isActive ? 'font-semibold text-fg' : 'text-fg-2')
-              }
-            >
-              <Icon className="h-5 w-5" aria-hidden /> {label}
-            </NavLink>
-          ))}
+          {NAV.filter((n) => n.to !== '/profile' && n.to !== '/inventories').map(({ to, label, icon: Icon, end }) =>
+            to === '/scan' ? (
+              <NavLink key={to} to={to} aria-label="Scan" className="flex h-14 items-center justify-center">
+                <span className="-mt-5 flex h-14 w-14 flex-col items-center justify-center rounded-full border border-fg bg-fg text-bg">
+                  <Icon className="h-6 w-6" aria-hidden />
+                </span>
+              </NavLink>
+            ) : (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                className={({ isActive }) =>
+                  cn('flex h-14 flex-col items-center justify-center gap-0.5 text-[11px]', isActive ? 'font-semibold text-fg' : 'text-fg-2')
+                }
+              >
+                <Icon className="h-5 w-5" aria-hidden /> {label}
+              </NavLink>
+            ),
+          )}
+          <NavLink
+            to="/inventories"
+            className={({ isActive }) =>
+              cn('flex h-14 flex-col items-center justify-center gap-0.5 text-[11px]', isActive ? 'font-semibold text-fg' : 'text-fg-2')
+            }
+          >
+            <Warehouse className="h-5 w-5" aria-hidden /> Inventories
+          </NavLink>
         </nav>
       </div>
     </div>

@@ -1,3 +1,4 @@
+import { escapeLike } from '@/domain/scan'
 import { addDays, parseNameList, sanitizeSearch, toDateString, DEFAULT_EXPIRY_WINDOW_DAYS, type StockState } from '@/domain/product-status'
 import { supabase } from '@/lib/supabase'
 import type { ProductFormValues } from './schema'
@@ -272,4 +273,21 @@ export async function fetchCategoryStock(inventoryId: string): Promise<CategoryS
   const { data, error } = await supabase.rpc('category_stock', { inv: inventoryId })
   if (error) throw error
   return (data ?? []) as CategoryStock[]
+}
+
+/**
+ * Find a product by scanned code. Match priority: barcode, then QR value, then SKU (case-insensitive).
+ * Archived products are returned too so the scan screen can say so instead of "not found".
+ */
+export async function findProductByCode(inventoryId: string, code: string): Promise<Product | null> {
+  const base = () => supabase.from('products').select(PRODUCT_COLUMNS).eq('inventory_id', inventoryId).limit(1)
+  const [byBarcode, byQr, bySku] = await Promise.all([
+    base().eq('barcode', code).returns<Product[]>(),
+    base().eq('qr_code', code).returns<Product[]>(),
+    base().ilike('sku', escapeLike(code)).returns<Product[]>(),
+  ])
+  for (const r of [byBarcode, byQr, bySku]) {
+    if (r.error) throw r.error
+  }
+  return byBarcode.data?.[0] ?? byQr.data?.[0] ?? bySku.data?.[0] ?? null
 }
