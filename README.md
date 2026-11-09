@@ -25,6 +25,6 @@ npm run dev
 - [DATABASE.md](DATABASE.md) – schema, RLS, stock-movement rules
 - [DEVELOPMENT.md](DEVELOPMENT.md) – setup, Supabase, workflow, **feature checklist**
 
-## Status
+## Current Status
 
 See the checklist in [DEVELOPMENT.md](DEVELOPMENT.md). Features are only ticked once actually tested.
