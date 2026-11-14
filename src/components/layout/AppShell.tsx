@@ -53,7 +53,7 @@ function WorkspaceSwitcher() {
         {inventories.length === 0 && <option value="">No inventories</option>}
         {inventories.map((i) => (
           <option key={i.id} value={i.id}>
-            {i.name}
+            {i.name}{i.is_demo ? ' (demo)' : ''}
           </option>
         ))}
       </select>
@@ -116,6 +116,15 @@ export function AppShell() {
           </NavLink>
         </header>
         <SyncBanner />
+        {inventory?.is_demo && (
+          <div role="status" className="flex items-center gap-2 border-b border-line bg-surface px-3 py-1.5 text-sm md:px-6">
+            <span className="font-semibold text-info">Demo data.</span>
+            <span>You are viewing sample data. Nothing here is real.</span>
+            <NavLink to="/inventories" className="ml-auto shrink-0 underline">
+              Manage
+            </NavLink>
+          </div>
+        )}
         <main className="min-h-0 flex-1 overflow-y-auto p-3 pb-20 md:p-6 md:pb-6">
           <Outlet />
         </main>

@@ -396,3 +396,104 @@ describe('bulk import', () => {
     expect(Number(n)).toBeGreaterThanOrEqual(3)
   })
 })
+
+describe('demo data', () => {
+  const seed = (uid: string, org = orgA) => as(uid, async () => (await db.query<{ id: string }>('select public.seed_demo_data($1) as id', [org])).rows[0]!.id)
+  let demo: string
+
+  it('only admins and owners can load it', async () => {
+    await rejects(seed(B, orgA), /Only admins and owners/)
+    await rejects(seed(C, orgA), /Only admins and owners/) // viewer
+  })
+
+  it('creates a flagged inventory, and is idempotent', async () => {
+    demo = await seed(A)
+    expect(await seed(A)).toBe(demo)
+    const inv = (await db.query<{ is_demo: boolean; name: string }>('select is_demo, name from public.inventories where id = $1', [demo])).rows[0]!
+    expect(inv).toEqual({ is_demo: true, name: 'Demo Store (sample data)' })
+  })
+
+  it('fills every module with realistic data', async () => {
+    const one = async (sql: string) => Number((await db.query<{ n: string }>(sql, [demo])).rows[0]!.n)
+    expect(await one('select count(*) as n from public.products where inventory_id = $1')).toBeGreaterThanOrEqual(35)
+    expect(await one('select count(*) as n from public.categories where inventory_id = $1')).toBe(7)
+    expect(await one('select count(*) as n from public.tags where inventory_id = $1')).toBe(6)
+    expect(await one('select count(*) as n from public.product_tags where inventory_id = $1')).toBeGreaterThan(20)
+    expect(await one("select count(*) as n from public.products where inventory_id = $1 and archived_at is not null")).toBe(2)
+    for (const state of ['ok', 'low', 'out']) {
+      expect(await one(`select count(*) as n from public.products where inventory_id = $1 and archived_at is null and stock_state = '${state}'`)).toBeGreaterThan(0)
+    }
+    expect(await one('select count(*) as n from public.products where inventory_id = $1 and expires_on < current_date')).toBeGreaterThan(0)
+    expect(await one('select count(*) as n from public.products where inventory_id = $1 and expires_on between current_date and current_date + 30')).toBeGreaterThan(0)
+    expect(await one('select count(*) as n from public.stock_movements where inventory_id = $1')).toBeGreaterThan(150)
+    for (const type of ['in', 'out', 'adjustment', 'correction']) {
+      expect(await one(`select count(*) as n from public.stock_movements where inventory_id = $1 and movement_type = '${type}'`)).toBeGreaterThan(0)
+    }
+  })
+
+  it('keeps the ledger exact: balances chain, never go negative, and match each product', async () => {
+    const bad = (await db.query<{ n: string }>(
+      `select count(*) as n from (
+         select m.product_id, m.quantity_before,
+                lag(m.quantity_after, 1, 0::numeric) over (partition by m.product_id order by m.created_at, m.id) as prev_after,
+                m.quantity_after
+         from public.stock_movements m where m.inventory_id = $1
+       ) x where x.quantity_before <> x.prev_after or x.quantity_after < 0`,
+      [demo],
+    )).rows[0]!.n
+    expect(Number(bad)).toBe(0)
+    const mismatch = (await db.query<{ n: string }>(
+      `select count(*) as n from public.products p
+       where p.inventory_id = $1
+         and p.quantity <> (select coalesce(sum(delta), 0) from public.stock_movements m where m.product_id = p.id)`,
+      [demo],
+    )).rows[0]!.n
+    expect(Number(mismatch)).toBe(0)
+  })
+
+  it('uses valid EAN-13 barcodes and places events in the past', async () => {
+    const codes = (await db.query<{ barcode: string }>('select barcode from public.products where inventory_id = $1', [demo])).rows.map((r) => r.barcode)
+    for (const code of codes) {
+      expect(code).toMatch(/^\d{13}$/)
+      const sum = [...code.slice(0, 12)].reduce((s, d, i) => s + Number(d) * (i % 2 === 0 ? 1 : 3), 0)
+      expect((10 - (sum % 10)) % 10).toBe(Number(code[12]))
+    }
+    const future = (await db.query<{ n: string }>('select count(*) as n from public.stock_movements where inventory_id = $1 and created_at > now()', [demo])).rows[0]!.n
+    expect(Number(future)).toBe(0)
+  })
+
+  it('produces the alerts and audit entry those states imply', async () => {
+    const kinds = (await db.query<{ kind: string }>('select distinct kind from public.notifications where inventory_id = $1', [demo])).rows.map((r) => r.kind).sort()
+    expect(kinds).toEqual(['expired', 'expiring', 'low_stock', 'out_of_stock'])
+    const audit = (await db.query<{ details: { products: number } }>("select details from public.audit_logs where inventory_id = $1 and action = 'demo.seed'", [demo])).rows
+    expect(audit).toHaveLength(1)
+    expect(audit[0]!.details.products).toBeGreaterThanOrEqual(35)
+  })
+
+  it('works with the dashboard summary', async () => {
+    const s = (await as(A, async () => (await db.query<{ total_products: string; low_stock: string; out_of_stock: string; expired: string }>('select * from public.inventory_summary($1)', [demo])).rows[0]!))
+    expect(Number(s.total_products)).toBeGreaterThanOrEqual(35)
+    expect(Number(s.low_stock)).toBeGreaterThan(0)
+    expect(Number(s.out_of_stock)).toBeGreaterThan(0)
+    expect(Number(s.expired)).toBeGreaterThan(0)
+  })
+
+  it('removal deletes only demo data and nothing else', async () => {
+    const real = Number((await db.query<{ n: string }>('select count(*) as n from public.products where inventory_id = $1', [invA])).rows[0]!.n)
+    await rejects(as(C, () => db.query('select public.remove_demo_data($1)', [orgA])), /Only admins and owners/)
+    expect(await as(A, async () => Number((await db.query<{ n: number }>('select public.remove_demo_data($1) as n', [orgA])).rows[0]!.n))).toBe(1)
+    for (const table of ['inventories', 'products', 'categories', 'tags', 'stock_movements', 'notifications', 'audit_logs']) {
+      const col = table === 'inventories' ? 'id' : 'inventory_id'
+      const left = (await db.query<{ n: string }>(`select count(*) as n from public.${table} where ${col} = $1`, [demo])).rows[0]!.n
+      expect(Number(left)).toBe(0)
+    }
+    expect(Number((await db.query<{ n: string }>('select count(*) as n from public.products where inventory_id = $1', [invA])).rows[0]!.n)).toBe(real)
+    expect(await as(A, async () => Number((await db.query<{ n: number }>('select public.remove_demo_data($1) as n', [orgA])).rows[0]!.n))).toBe(0)
+  })
+
+  it('can be loaded again after removal', async () => {
+    const again = await seed(A)
+    expect(again).not.toBe(demo)
+    expect(Number((await db.query<{ n: string }>('select count(*) as n from public.products where inventory_id = $1', [again])).rows[0]!.n)).toBeGreaterThanOrEqual(35)
+  })
+})

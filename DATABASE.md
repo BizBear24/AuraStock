@@ -65,3 +65,7 @@ Manual two-session check on a real database: open two SQL sessions as an editor,
 ## Phase 6b (`0006_import.sql`)
 
 `import_products(inventory, rows jsonb, update_existing, operation_id)`: the commit step of a CSV/XLSX import. One transaction: any failing row aborts everything and reports `Row n: reason`. New products with an opening quantity get a normal stock-in movement (reference `IMPORT`) so the ledger stays complete; existing products matched by barcode, QR value or SKU are skipped, or have their details (never their quantity) updated. Limit 5000 rows per call. Requires editor role; writes an audit entry.
+
+## Demo data (`0007_demo_data.sql`)
+
+`inventories.is_demo` (at most one per organization), `seed_demo_data(org)` and `remove_demo_data(org)` (admin or owner). Removal relies on the same cascade as any inventory delete. See DEVELOPMENT.md.

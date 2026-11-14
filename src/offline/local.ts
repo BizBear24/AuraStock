@@ -271,3 +271,15 @@ export async function pullInventory(inventoryId: string, source: PullSource, now
   await cacheTaxonomy(inventoryId, await source.listCategories(inventoryId), await source.listTags(inventoryId))
   await setMeta(key, { fullAt: full ? now() : state.fullAt, since: newest })
 }
+
+/** Forget everything cached for an inventory that no longer exists (for example after removing demo data). */
+export async function purgeInventoryCache(inventoryId: string): Promise<void> {
+  const db = offlineDb()
+  await db.transaction('rw', db.products, db.categories, db.tags, db.outbox, db.meta, async () => {
+    await db.products.where('inventory_id').equals(inventoryId).delete()
+    await db.categories.where('inventory_id').equals(inventoryId).delete()
+    await db.tags.where('inventory_id').equals(inventoryId).delete()
+    await db.outbox.where('inventoryId').equals(inventoryId).delete()
+    await db.meta.delete(`pull:${inventoryId}`)
+  })
+}

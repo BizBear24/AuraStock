@@ -11,6 +11,7 @@ import { fetchMovementSummary, listMovements } from '@/features/stock/api'
 import { MovementList } from '@/features/stock/MovementList'
 import { listNotifications } from '@/features/notifications/api'
 import { NotificationRow } from '@/features/notifications/NotificationsPage'
+import { DemoDataPanel } from './DemoDataPanel'
 import { useWorkspace } from './WorkspaceProvider'
 
 function Metric({ label, value, to, tone }: { label: string; value: number; to?: string; tone?: 'warn' | 'crit' }) {
@@ -65,6 +66,9 @@ export function OverviewPage() {
             ) : undefined
           }
         />
+        <div className="mt-4 max-w-xl">
+          <DemoDataPanel />
+        </div>
       </>
     )
   }

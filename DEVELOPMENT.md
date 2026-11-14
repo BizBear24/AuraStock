@@ -43,3 +43,12 @@ Typecheck, lint and test before every commit: `npm run typecheck && npm run lint
 - [ ] Phase 7 – Team collaboration
 - [ ] Phase 8 – Backups, Google Drive, NFC
 - [ ] Phase 9 – PWA and polish
+
+## Demo data toggle
+
+**Inventories -> Demo data** (also shown on an empty dashboard) loads a sample inventory so every module can be explored, and removes it again. Admins and owners only; needs a connection.
+
+- `seed_demo_data(org)` (migration 0007) creates one inventory flagged `is_demo` ("Demo Store (sample data)") with ~38 products in 7 categories, tags, valid EAN-13 barcodes and QR values, a 28-day ledger (opening stock, sales, restocks, cycle-count adjustments, corrections) whose balances always add up, healthy/low/out/expiring/expired products, 2 archived products, and the stored alerts and audit entry these states produce. It is idempotent (one demo inventory per organization) and deterministic.
+- `remove_demo_data(org)` deletes only inventories flagged `is_demo`; real inventories are never touched. The toggle asks for confirmation first and clears the on-device copy.
+- A banner and "(demo)" label make it obvious when demo data is active.
+- Tested on real SQL: ledger chain integrity, no negative balances, all four alert kinds, removal leaves real data intact, permissions, reload after removal.

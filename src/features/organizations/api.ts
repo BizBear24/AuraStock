@@ -17,6 +17,8 @@ export interface Inventory {
   description: string | null
   archived_at: string | null
   created_at: string
+  /** Sample inventory created by the demo data toggle. */
+  is_demo: boolean
 }
 
 interface MembershipRow {
@@ -48,7 +50,7 @@ export async function createOrganization(name: string): Promise<string> {
 async function fetchInventoriesRemote(organizationId: string): Promise<Inventory[]> {
   const { data, error } = await supabase
     .from('inventories')
-    .select('id, organization_id, name, description, archived_at, created_at')
+    .select('id, organization_id, name, description, archived_at, created_at, is_demo')
     .eq('organization_id', organizationId)
     .is('archived_at', null)
     .order('name')
@@ -71,7 +73,7 @@ export async function createInventory(input: {
       description: input.description || null,
       created_by: input.userId,
     })
-    .select('id, organization_id, name, description, archived_at, created_at')
+    .select('id, organization_id, name, description, archived_at, created_at, is_demo')
     .single<Inventory>()
   if (error) throw error
   return data
@@ -103,4 +105,18 @@ export function fetchInventories(organizationId: string): Promise<Inventory[]> {
     },
     async () => (await getMeta<Inventory[]>(key)) ?? [],
   )
+}
+
+/** Create the sample inventory (admins and owners). Returns the demo inventory id; safe to call twice. */
+export async function seedDemoData(organizationId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('seed_demo_data', { p_org: organizationId })
+  if (error) throw error
+  return data as string
+}
+
+/** Delete the sample inventory and everything in it. Real inventories are never touched. */
+export async function removeDemoData(organizationId: string): Promise<number> {
+  const { data, error } = await supabase.rpc('remove_demo_data', { p_org: organizationId })
+  if (error) throw error
+  return Number(data ?? 0)
 }
