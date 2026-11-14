@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 
-export type AlertKind = 'low_stock' | 'out_of_stock' | 'expiring' | 'expired'
+export type AlertKind = 'low_stock' | 'out_of_stock' | 'expiring' | 'expired' | 'transfer_incoming' | 'transfer_discrepancy'
 
 export interface AppNotification {
   id: string

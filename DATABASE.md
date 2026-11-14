@@ -69,3 +69,7 @@ Manual two-session check on a real database: open two SQL sessions as an editor,
 ## Demo data (`0007_demo_data.sql`)
 
 `inventories.is_demo` (at most one per organization), `seed_demo_data(org)` and `remove_demo_data(org)` (admin or owner). Removal relies on the same cascade as any inventory delete. See DEVELOPMENT.md.
+
+## Transfers (`0008_transfers.sql`)
+
+`transfers` and `transfer_lines` (read-only to clients), `stock_movements.transfer_id` (not a foreign key, so the immutable ledger can never be blocked or altered), `record_stock_movement` gains an optional `p_transfer` argument, and `dispatch_transfer`, `receive_transfer`, `close_transfer`, `cancel_transfer` do all the work in single transactions. New alert kinds: `transfer_incoming`, `transfer_discrepancy`. See DEVELOPMENT.md for behaviour and guarantees.

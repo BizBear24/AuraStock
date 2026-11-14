@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Camera, CameraOff, Keyboard, Plus } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -17,6 +17,8 @@ import { findProductByCode } from '@/features/products/api'
 import { ProductFormDialog } from '@/features/products/ProductFormDialog'
 import type { ProductFormInput } from '@/features/products/schema'
 import { StockMovementDialog } from '@/features/stock/StockMovementDialog'
+import { findIncomingLine, receiveTransfer } from '@/features/transfers/api'
+import { outstanding } from '@/domain/transfer'
 import { CameraScanner, type CameraScan } from './CameraScanner'
 import { scanFeedback } from './feedback'
 import { useHidScanner } from './useHidScanner'
@@ -76,6 +78,27 @@ export function ScanPage() {
   })
 
   const product = lookup.data ?? null
+
+  // Second scan of a transfer: an item that is on its way to this inventory can be received right here.
+  const queryClient = useQueryClient()
+  const incoming = useQuery({
+    queryKey: ['transfers', 'incoming-scan', inventoryId, scan?.code, scan?.at],
+    queryFn: () => findIncomingLine(inventoryId, scan!.code),
+    enabled: Boolean(inventoryId && scan && canStock),
+    retry: false,
+  })
+  const match = incoming.data ?? null
+  const receiveIncoming = useMutation({
+    mutationFn: (v: { transferId: string; lineId: string; quantity: number }) =>
+      receiveTransfer({ transferId: v.transferId, lines: [{ line_id: v.lineId, quantity: v.quantity }], operationId: crypto.randomUUID() }),
+    onSuccess: async () => {
+      scanFeedback('ok')
+      await Promise.all(
+        ['transfers', 'products', 'product', 'movements', 'summary', 'category-stock', 'notifications'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })),
+      )
+    },
+    onError: () => scanFeedback('error'),
+  })
 
   const prefill = useMemo<Partial<ProductFormInput> | undefined>(
     () => (scan ? (scan.isQr ? { qr_code: scan.code } : { barcode: scan.code }) : undefined),
@@ -141,6 +164,41 @@ export function ScanPage() {
         </div>
 
         <Panel className="p-4" aria-live="polite">
+          {scan && match && (
+            <div className="mb-4 space-y-2 rounded-md border border-warn p-3 text-sm" role="status">
+              <p>
+                <b>Incoming transfer {match.transfer.reference}</b> from {match.transfer.source?.name}:{' '}
+                <span className="num">{outstanding(match.line)}</span> × {match.line.product_name} still to arrive.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  loading={receiveIncoming.isPending}
+                  onClick={() => receiveIncoming.mutate({ transferId: match.transfer.id, lineId: match.line.id, quantity: 1 })}
+                >
+                  Receive 1
+                </Button>
+                {outstanding(match.line) > 1 && (
+                  <Button
+                    size="sm"
+                    disabled={receiveIncoming.isPending}
+                    onClick={() => receiveIncoming.mutate({ transferId: match.transfer.id, lineId: match.line.id, quantity: outstanding(match.line) })}
+                  >
+                    Receive all {outstanding(match.line)}
+                  </Button>
+                )}
+                <Button asChild size="sm" variant="ghost">
+                  <Link to={`/transfers/${match.transfer.id}`}>Open transfer</Link>
+                </Button>
+              </div>
+              {receiveIncoming.isError && (
+                <p role="alert" className="text-crit">
+                  {errorMessage(receiveIncoming.error)}
+                </p>
+              )}
+            </div>
+          )}
           {!scan && <p className="text-sm text-fg-2">Scan a product to see its details and record stock.</p>}
           {scan && lookup.isPending && <LoadingState label={`Looking up ${scan.code}`} />}
           {scan && lookup.isError && <ErrorState message={errorMessage(lookup.error)} onRetry={() => void lookup.refetch()} />}

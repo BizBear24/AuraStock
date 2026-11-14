@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Bell, Boxes, Calculator, FileSpreadsheet, FileText, MoreHorizontal, LayoutDashboard, LogOut, Package, ScanLine, User, Warehouse } from 'lucide-react'
+import { ArrowLeftRight, Bell, Boxes, Truck, Calculator, FileSpreadsheet, FileText, MoreHorizontal, LayoutDashboard, LogOut, Package, ScanLine, User, Warehouse } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { ConfirmDialog } from '@/components/ui/dialog'
@@ -14,6 +14,7 @@ const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/products', label: 'Products', icon: Package, end: false },
   { to: '/scan', label: 'Scan', icon: ScanLine, end: false },
+  { to: '/transfers', label: 'Transfers', icon: Truck, end: false },
   { to: '/movements', label: 'Movements', icon: ArrowLeftRight, end: false },
   { to: '/notifications', label: 'Alerts', icon: Bell, end: false },
   { to: '/data', label: 'Import & export', icon: FileSpreadsheet, end: false },

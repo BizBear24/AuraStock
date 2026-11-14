@@ -12,6 +12,7 @@ import { MovementList } from '@/features/stock/MovementList'
 import { listNotifications } from '@/features/notifications/api'
 import { NotificationRow } from '@/features/notifications/NotificationsPage'
 import { DemoDataPanel } from './DemoDataPanel'
+import { countIncoming } from '@/features/transfers/api'
 import { useWorkspace } from './WorkspaceProvider'
 
 function Metric({ label, value, to, tone }: { label: string; value: number; to?: string; tone?: 'warn' | 'crit' }) {
@@ -44,6 +45,7 @@ export function OverviewPage() {
     enabled: Boolean(inventoryId),
     retry: false,
   })
+  const incomingCount = useQuery({ queryKey: ['transfers', 'incoming-count', inventoryId], queryFn: () => countIncoming(inventoryId), enabled: Boolean(inventoryId), retry: false })
   const flow = useQuery({ queryKey: ['movement-summary', inventoryId], queryFn: () => fetchMovementSummary(inventoryId, 14), enabled: Boolean(inventoryId) })
   const recent = useQuery({
     queryKey: ['movements', inventoryId, 'recent'],
@@ -95,6 +97,18 @@ export function OverviewPage() {
           <Metric label="Expiring (30d)" value={summary.data.expiring} tone="warn" to="/products?expiry=expiring" />
           <Metric label="Expired" value={summary.data.expired} tone="crit" to="/products?expiry=expired" />
         </div>
+      )}
+
+      {incomingCount.data !== undefined && incomingCount.data > 0 && (
+        <Link
+          to="/transfers?direction=incoming"
+          className="mt-4 flex items-center justify-between rounded-lg border border-warn bg-bg-2 px-4 py-3 hover:bg-surface"
+        >
+          <span>
+            <b className="num">{incomingCount.data}</b> transfer{incomingCount.data === 1 ? ' is' : 's are'} on the way to {inventory.name}.
+          </span>
+          <span className="text-sm underline">Receive</span>
+        </Link>
       )}
 
       {alerts.data && alerts.data.rows.length > 0 && (

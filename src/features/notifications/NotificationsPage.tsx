@@ -14,6 +14,8 @@ export const ALERT_LABEL: Record<AlertKind, { label: string; status: Status }> =
   low_stock: { label: 'Low stock', status: 'warn' },
   expired: { label: 'Expired', status: 'crit' },
   expiring: { label: 'Expiring', status: 'warn' },
+  transfer_incoming: { label: 'Incoming transfer', status: 'info' },
+  transfer_discrepancy: { label: 'Transfer shortage', status: 'crit' },
 }
 
 export function NotificationRow({ n, onOpen }: { n: AppNotification; onOpen?: (n: AppNotification) => void }) {
@@ -26,8 +28,12 @@ export function NotificationRow({ n, onOpen }: { n: AppNotification; onOpen?: (n
           <span className="num text-xs text-fg-2">{new Date(n.created_at).toLocaleString()}</span>
         </div>
         <p className={`mt-1 ${n.is_read ? '' : 'font-medium'}`}>
-          {n.product_id ? (
-            <Link to={`/products/${n.product_id}`} className="hover:underline" onClick={() => onOpen?.(n)}>
+          {n.product_id || n.kind.startsWith('transfer_') ? (
+            <Link
+              to={n.product_id ? `/products/${n.product_id}` : n.kind === 'transfer_incoming' ? '/transfers?direction=incoming' : '/transfers?direction=all'}
+              className="hover:underline"
+              onClick={() => onOpen?.(n)}
+            >
               {n.title}
             </Link>
           ) : (

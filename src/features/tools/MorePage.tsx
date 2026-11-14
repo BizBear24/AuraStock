@@ -1,4 +1,4 @@
-import { Bell, Calculator, CloudOff, FileSpreadsheet, FileText, User, Warehouse } from 'lucide-react'
+import { Bell, Calculator, CloudOff, Truck, FileSpreadsheet, FileText, User, Warehouse } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { Link } from 'react-router-dom'
 import { PageHeader, Panel } from '@/components/ui/panel'
@@ -11,6 +11,7 @@ interface Item {
 }
 
 const ITEMS: Item[] = [
+  { to: '/transfers', label: 'Transfers', description: 'Scan stock out and in between inventories', icon: Truck },
   { to: '/notifications', label: 'Alerts', description: 'Low stock, out of stock and expiry alerts', icon: Bell },
   { to: '/data', label: 'Import & export', description: 'CSV and Excel files', icon: FileSpreadsheet },
   { to: '/reports', label: 'Reports', description: 'PDF inventory, stock and movement reports', icon: FileText },

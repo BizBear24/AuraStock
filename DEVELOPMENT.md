@@ -52,3 +52,15 @@ Typecheck, lint and test before every commit: `npm run typecheck && npm run lint
 - `remove_demo_data(org)` deletes only inventories flagged `is_demo`; real inventories are never touched. The toggle asks for confirmation first and clears the on-device copy.
 - A banner and "(demo)" label make it obvious when demo data is active.
 - Tested on real SQL: ledger chain integrity, no negative balances, all four alert kinds, removal leaves real data intact, permissions, reload after removal.
+
+## Transfers (two-scan, in-transit)
+
+Move stock between two inventories ("locations") of one organization, scanning it out when it is dispatched and in when it arrives.
+
+1. **Dispatch** (`/transfers/new`): pick a destination, scan items (camera, USB scanner or typing a code; each repeat scan adds one unit). Dispatching removes the stock from the source immediately and the transfer is **in transit**: the units are in neither inventory.
+2. **Receive** (`/transfers/:id`, or simply scan the item on the Scan page): each arrival scan adds one unit at the destination. Partial and repeated receiving works; the transfer completes by itself when everything has arrived. Products that do not exist at the destination are created from the transfer (name, SKU, barcode, QR value, unit, category, minimum, expiration date); existing ones are matched by barcode, QR value, then SKU.
+3. **Close with shortage**: if some units never arrive, closing records the shortage and raises a "transfer shortage" alert. **Cancel**: before anything is received, returns all units to the source.
+
+Guarantees (tested on real SQL, migration 0008): all-or-nothing dispatch and receive; negative stock impossible; idempotent replays (same operation id never counts twice); over-receipt rejected; every change is a normal ledger movement (reference `TR-nnnnn`, linked by `transfer_id`) so history, alerts and audit entries apply; sent equals received plus recorded shortage; expired stock can leave (disposal) but cannot be received; permissions: editor or above, both inventories in the same organization; no direct table writes.
+
+Limits: online only (no offline queue yet); one product once per transfer; at most 200 lines; no per-unit serial tracking; an existing destination product keeps its own expiration date.
