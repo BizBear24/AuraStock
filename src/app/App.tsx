@@ -19,6 +19,9 @@ const ScanPage = lazy(() => import('@/features/scan/ScanPage').then((m) => ({ de
 const SyncPage = lazy(() => import('@/offline/SyncPage').then((m) => ({ default: m.SyncPage })))
 const NotificationsPage = lazy(() => import('@/features/notifications/NotificationsPage').then((m) => ({ default: m.NotificationsPage })))
 const DataPage = lazy(() => import('@/features/data/DataPage').then((m) => ({ default: m.DataPage })))
+const ReportsPage = lazy(() => import('@/features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
+const CalculatorPage = lazy(() => import('@/features/tools/CalculatorPage').then((m) => ({ default: m.CalculatorPage })))
+const MorePage = lazy(() => import('@/features/tools/MorePage').then((m) => ({ default: m.MorePage })))
 const ProfilePage = lazy(() => import('@/features/auth/ProfilePage').then((m) => ({ default: m.ProfilePage })))
 
 const queryClient = new QueryClient({
@@ -72,6 +75,9 @@ export function App() {
                   <Route path="sync" element={<SyncPage />} />
                   <Route path="notifications" element={<NotificationsPage />} />
                   <Route path="data" element={<DataPage />} />
+                  <Route path="reports" element={<ReportsPage />} />
+                  <Route path="calculator" element={<CalculatorPage />} />
+                  <Route path="more" element={<MorePage />} />
                   <Route path="movements" element={<MovementsPage />} />
                   <Route path="inventories" element={<InventoriesPage />} />
                   <Route path="profile" element={<ProfilePage />} />

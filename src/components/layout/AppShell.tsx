@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Bell, Boxes, FileSpreadsheet, LayoutDashboard, LogOut, Package, ScanLine, User, Warehouse } from 'lucide-react'
+import { ArrowLeftRight, Bell, Boxes, Calculator, FileSpreadsheet, FileText, MoreHorizontal, LayoutDashboard, LogOut, Package, ScanLine, User, Warehouse } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { ConfirmDialog } from '@/components/ui/dialog'
@@ -17,9 +17,14 @@ const NAV = [
   { to: '/movements', label: 'Movements', icon: ArrowLeftRight, end: false },
   { to: '/notifications', label: 'Alerts', icon: Bell, end: false },
   { to: '/data', label: 'Import & export', icon: FileSpreadsheet, end: false },
+  { to: '/reports', label: 'Reports', icon: FileText, end: false },
+  { to: '/calculator', label: 'Calculator', icon: Calculator, end: false },
   { to: '/inventories', label: 'Inventories', icon: Warehouse, end: false },
   { to: '/profile', label: 'Profile', icon: User, end: false },
 ] as const
+
+/** Sections with a place in the mobile bottom bar; everything else lives under More. */
+const MOBILE_PRIMARY: string[] = ['/', '/products', '/scan', '/movements']
 
 function WorkspaceSwitcher() {
   const { memberships, organization, inventories, inventory, setOrganizationId, setInventoryId } = useWorkspace()
@@ -127,7 +132,7 @@ export function AppShell() {
           aria-label="Primary mobile"
           className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-5 border-t border-line bg-bg-2 pb-[env(safe-area-inset-bottom)] md:hidden"
         >
-          {NAV.filter((n) => n.to !== '/profile' && n.to !== '/inventories' && n.to !== '/notifications' && n.to !== '/data').map(({ to, label, icon: Icon, end }) =>
+          {NAV.filter((n) => MOBILE_PRIMARY.includes(n.to)).map(({ to, label, icon: Icon, end }) =>
             to === '/scan' ? (
               <NavLink key={to} to={to} aria-label="Scan" className="flex h-14 items-center justify-center">
                 <span className="-mt-5 flex h-14 w-14 flex-col items-center justify-center rounded-full border border-fg bg-fg text-bg">
@@ -148,12 +153,12 @@ export function AppShell() {
             ),
           )}
           <NavLink
-            to="/inventories"
+            to="/more"
             className={({ isActive }) =>
               cn('flex h-14 flex-col items-center justify-center gap-0.5 text-[11px]', isActive ? 'font-semibold text-fg' : 'text-fg-2')
             }
           >
-            <Warehouse className="h-5 w-5" aria-hidden /> Inventories
+            <MoreHorizontal className="h-5 w-5" aria-hidden /> More
           </NavLink>
         </nav>
       </div>

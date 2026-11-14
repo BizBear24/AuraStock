@@ -33,12 +33,13 @@ Typecheck, lint and test before every commit: `npm run typecheck && npm run lint
   - [ ] **Not yet verified in a real browser with the network switched off** - please try: open the app online once, go offline in DevTools, record stock and edit a product, reconnect and watch the Sync badge
   - [ ] Limitation: the app shell itself is not cached until Phase 9 (service worker), so a cold start with no connection will not load yet; an already-open tab keeps working
   - [ ] Online-only for now: archive/restore, delete, duplicate, bulk actions, creating inventories/organizations, movement history, CSV/Excel (Phase 6)
-- [ ] Phase 6 – Alerts, import/export, reports, calculator
+- [x] Phase 6 – Alerts, import/export, reports, calculator
   - [x] 6a Alerts: stored low/out-of-stock/expiring/expired notifications, bell with unread count, Alerts page (filters, mark read), dashboard "Needs attention"; migration 0005; tested on real SQL (transitions, no duplicates, expiry job, per-user read state, isolation)
   - [ ] 6a not verified live: the hourly pg_cron schedule needs the extension enabled on your Supabase project
   - [x] 6b CSV/XLSX import and export: column mapping with auto-detection, per-row validation, in-file and existing-product duplicate detection, preview before commit, atomic import (migration 0006); CSV (UTF-8 BOM, formula-injection safe) and XLSX (frozen bold header, filter, real numbers/dates) export of products and movements. Tested: parsing, validation, CSV/XLSX round trips, import function on real SQL
   - [ ] 6b limits: files up to 5 MB / 5000 rows per import; import and movement export need a connection; product export works offline from the device copy; CSV cells starting with = + - @ are prefixed with ' on export (spreadsheet safety), so such SKUs gain a leading quote in CSV
-  - [ ] 6c PDF reports and calculator
+  - [x] 6c PDF reports (inventory report, stock summary by category with an attention list, movement report for a date range) with page numbers and summary strip; safe arithmetic calculator (no eval); More page for mobile; Sign out on the Profile page
+  - [ ] 6c limits: PDFs use a standard Latin-1 font, so characters outside Western European alphabets print as "?" (use the Excel export for full Unicode); movement report needs a connection; reports are generated in the browser, so very large inventories (tens of thousands of rows) may be slow
 - [ ] Phase 7 – Team collaboration
 - [ ] Phase 8 – Backups, Google Drive, NFC
 - [ ] Phase 9 – PWA and polish

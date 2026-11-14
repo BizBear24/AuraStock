@@ -1,7 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
+import { LogOut } from 'lucide-react'
+import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/dialog'
 import { PageHeader, Panel } from '@/components/ui/panel'
 import { ErrorState, LoadingState } from '@/components/ui/states'
 import { errorMessage, supabase } from '@/lib/supabase'
+import { useOffline } from '@/offline/OfflineProvider'
 import { useAuth } from './AuthProvider'
 
 interface Profile {
@@ -11,7 +16,12 @@ interface Profile {
 }
 
 export function ProfilePage() {
-  const { user } = useAuth()
+  const { user, signOut } = useAuth()
+  const { snapshot } = useOffline()
+  const [confirming, setConfirming] = useState(false)
+  const [signOutError, setSignOutError] = useState<string | null>(null)
+  const unsynced = snapshot.pending + snapshot.failed + snapshot.conflicts
+
   const query = useQuery({
     queryKey: ['profile', user?.id],
     queryFn: async () => {
@@ -25,6 +35,15 @@ export function ProfilePage() {
     },
     enabled: Boolean(user),
   })
+
+  const doSignOut = async () => {
+    setSignOutError(null)
+    try {
+      await signOut()
+    } catch (e) {
+      setSignOutError(errorMessage(e))
+    }
+  }
 
   return (
     <>
@@ -42,7 +61,26 @@ export function ProfilePage() {
             <dd className="num">{new Date(query.data.created_at).toLocaleDateString()}</dd>
           </dl>
         )}
+        <div className="mt-4 border-t border-line pt-4">
+          <Button onClick={() => (unsynced > 0 ? setConfirming(true) : void doSignOut())}>
+            <LogOut className="h-4 w-4" aria-hidden /> Sign out
+          </Button>
+          {signOutError && (
+            <p role="alert" className="mt-2 text-sm text-crit">
+              {signOutError}
+            </p>
+          )}
+        </div>
       </Panel>
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title="Sign out with unsynced changes?"
+        description={`${unsynced} change${unsynced === 1 ? ' is' : 's are'} still saved only on this device. They stay here and will be sent the next time you sign in on this device. Until then, other devices will not see them.`}
+        confirmLabel="Sign out anyway"
+        destructive
+        onConfirm={() => void doSignOut()}
+      />
     </>
   )
 }
