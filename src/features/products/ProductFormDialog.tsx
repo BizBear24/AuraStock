@@ -72,7 +72,7 @@ function ProductForm({ inventoryId, product, initial, onClose, onSaved }: { inve
     mutationFn: (values: ProductFormValues) => client.submitProduct({ inventoryId, product, newProductId, values, operationId }),
     onSettled: () =>
       Promise.all(
-        ['products', 'product', 'categories', 'tags', 'summary', 'category-stock'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })),
+        ['products', 'product', 'categories', 'tags', 'summary', 'category-stock', 'notifications'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })),
       ),
     onSuccess: ({ result, productId }) => {
       if (result.status === 'synced') {

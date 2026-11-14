@@ -33,7 +33,11 @@ Typecheck, lint and test before every commit: `npm run typecheck && npm run lint
   - [ ] **Not yet verified in a real browser with the network switched off** - please try: open the app online once, go offline in DevTools, record stock and edit a product, reconnect and watch the Sync badge
   - [ ] Limitation: the app shell itself is not cached until Phase 9 (service worker), so a cold start with no connection will not load yet; an already-open tab keeps working
   - [ ] Online-only for now: archive/restore, delete, duplicate, bulk actions, creating inventories/organizations, movement history, CSV/Excel (Phase 6)
-- [ ] Phase 6 – Alerts, import/export, reports
+- [ ] Phase 6 – Alerts, import/export, reports, calculator
+  - [x] 6a Alerts: stored low/out-of-stock/expiring/expired notifications, bell with unread count, Alerts page (filters, mark read), dashboard "Needs attention"; migration 0005; tested on real SQL (transitions, no duplicates, expiry job, per-user read state, isolation)
+  - [ ] 6a not verified live: the hourly pg_cron schedule needs the extension enabled on your Supabase project
+  - [ ] 6b CSV/XLSX import and export
+  - [ ] 6c PDF reports and calculator
 - [ ] Phase 7 – Team collaboration
 - [ ] Phase 8 – Backups, Google Drive, NFC
 - [ ] Phase 9 – PWA and polish

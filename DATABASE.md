@@ -50,3 +50,14 @@ Manual two-session check on a real database: open two SQL sessions as an editor,
 ## Phase 5 (`0004_details_version.sql`)
 
 `products.details_version` increments when any descriptive column changes and is untouched by quantity-only changes. It is the optimistic-concurrency token for offline edits (see ARCHITECTURE.md).
+
+## Phase 6a (`0005_alerts.sql`)
+
+- `notifications`: stored alerts per organization/inventory/product (`low_stock`, `out_of_stock`, `expiring`, `expired`). Written only by database functions.
+- `notification_reads`: per-user read receipts (read state is not shared between teammates).
+- `product_alert_state`: internal record of the last evaluated stock/expiry state per product. Alerts fire only on **transitions** into low / out / expiring / expired, so a product that stays low does not alert every run, and one that recovers and drops again alerts again. A new product at zero stock is not an alert.
+- Triggers on `products` evaluate immediately after inserts and after changes to quantity, minimum stock, expiration date or archive state. Archived products never alert.
+- `generate_alerts()` re-checks products that have an expiration date (they drift into "expiring/expired" without any edit). The migration schedules it hourly with **pg_cron when the extension is available** (on Supabase, enable `pg_cron` first, then re-run the `cron.schedule` statement shown in the migration). Where pg_cron is not available, call `select public.generate_alerts();` from any scheduler (for example a Supabase scheduled Edge Function). The function is not callable by app users.
+- Helpers: `list_notifications`, `unread_notification_count`, `mark_notifications_read`.
+- The 30-day expiry window is fixed and shared with `DEFAULT_EXPIRY_WINDOW_DAYS` in `src/domain/product-status.ts`. Low-stock thresholds are configurable per product (`min_stock`).
+- Alerts are not yet pushed live; the bell polls once a minute and refreshes after stock changes. Realtime push arrives with Phase 7.

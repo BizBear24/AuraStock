@@ -29,7 +29,7 @@ function createRuntime(userId: string) {
   return { engine, client: new OfflineClient(engine, userId) }
 }
 
-const QUERY_PREFIXES = ['products', 'product', 'summary', 'category-stock', 'movements', 'movement-summary', 'categories', 'tags']
+const QUERY_PREFIXES = ['products', 'product', 'summary', 'category-stock', 'movements', 'movement-summary', 'categories', 'tags', 'notifications']
 
 /** Opens the signed-in user's on-device database and runs the sync engine for the lifetime of the session. */
 export function OfflineProvider({ userId, children }: { userId: string; children: ReactNode }) {

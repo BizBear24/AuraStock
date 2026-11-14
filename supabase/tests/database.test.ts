@@ -228,3 +228,101 @@ describe('organization safeguards', () => {
     await rejects(db.query("delete from public.organization_members where organization_id = $1 and user_id = $2", [orgA, A]), /at least one owner/)
   })
 })
+
+describe('alerts and notifications', () => {
+  let alertProduct: string
+  const kinds = async () =>
+    (await db.query<{ kind: string }>('select kind from public.notifications where product_id = $1 order by created_at, id', [alertProduct])).rows.map((r) => r.kind)
+  const move = (type: string, amount: number) =>
+    as(A, () => db.query('select public.record_stock_movement($1, $2, $3, $4)', [alertProduct, type, amount, op()]))
+
+  beforeAll(async () => {
+    alertProduct = (await db.query<{ id: string }>(
+      "insert into public.products (inventory_id, name, min_stock, created_by) values ($1, 'Alert Rice', 5, $2) returning id",
+      [invA, A],
+    )).rows[0]!.id
+  })
+
+  it('does not alert for a brand-new product sitting at zero', async () => {
+    expect(await kinds()).toEqual([])
+  })
+
+  it('alerts on low and out-of-stock transitions, once each', async () => {
+    await move('in', 10)
+    expect(await kinds()).toEqual([])
+    await move('out', 6) // 4 <= min 5
+    expect(await kinds()).toEqual(['low_stock'])
+    await move('out', 1) // still low: no repeat
+    expect(await kinds()).toEqual(['low_stock'])
+    await move('out', 3) // 0
+    expect(await kinds()).toEqual(['low_stock', 'out_of_stock'])
+  })
+
+  it('alerts again after recovering and dropping', async () => {
+    await move('in', 20)
+    await move('out', 18)
+    expect(await kinds()).toEqual(['low_stock', 'out_of_stock', 'low_stock'])
+  })
+
+  it('writes readable messages', async () => {
+    const row = (await db.query<{ title: string; body: string }>("select title, body from public.notifications where product_id = $1 and kind = 'out_of_stock'", [alertProduct])).rows[0]!
+    expect(row.title).toBe('Out of stock: Alert Rice')
+    expect(row.body).toContain('Main')
+  })
+
+  it('raises expiry alerts on edit and from the scheduled job', async () => {
+    await db.query("update public.products set expires_on = current_date + 10 where id = $1", [alertProduct])
+    expect((await kinds()).at(-1)).toBe('expiring')
+    await db.query("update public.products set expires_on = current_date - 1 where id = $1", [alertProduct])
+    expect((await kinds()).at(-1)).toBe('expired')
+    const before = (await kinds()).length
+    await db.query('select public.generate_alerts()')
+    expect((await kinds()).length).toBe(before) // idempotent
+    // Time passing: simulate by rewinding the remembered state, as the daily job would see a change.
+    await db.query("update public.product_alert_state set expiry_state = 'ok' where product_id = $1", [alertProduct])
+    await db.query('select public.generate_alerts()')
+    expect((await kinds()).length).toBe(before + 1)
+  })
+
+  it('stops alerting for archived products', async () => {
+    const before = (await kinds()).length
+    await db.query('update public.products set archived_at = now() where id = $1', [alertProduct])
+    await db.query("update public.products set expires_on = current_date + 5 where id = $1", [alertProduct])
+    expect((await kinds()).length).toBe(before)
+  })
+
+  it('is private to the organization and tracks read state per user', async () => {
+    await as(B, async () => {
+      expect((await db.query('select 1 from public.notifications')).rows).toHaveLength(0)
+      expect(Number((await db.query<{ n: string }>('select public.unread_notification_count($1) as n', [orgA])).rows[0]!.n)).toBe(0)
+      await rejects(db.query('select public.mark_notifications_read($1)', [orgA]), /Not a member/)
+    })
+    const total = await as(A, async () => Number((await db.query<{ n: string }>('select public.unread_notification_count($1) as n', [orgA])).rows[0]!.n))
+    expect(total).toBeGreaterThan(0)
+    await as(A, () => db.query('select public.mark_notifications_read($1)', [orgA]))
+    expect(await as(A, async () => Number((await db.query<{ n: string }>('select public.unread_notification_count($1) as n', [orgA])).rows[0]!.n))).toBe(0)
+    // A viewer in the same org still sees them as unread: read state is per user.
+    expect(await as(C, async () => Number((await db.query<{ n: string }>('select public.unread_notification_count($1) as n', [orgA])).rows[0]!.n))).toBe(total)
+  })
+
+  it('lists notifications with a per-user read flag, paged and filterable', async () => {
+    const list = (uid: string, unread: boolean, limit = 25, offset = 0) =>
+      as(uid, async () => (await db.query<{ is_read: boolean; total_count: string }>('select is_read, total_count from public.list_notifications($1, null, $2, $3, $4)', [orgA, unread, limit, offset])).rows)
+    const all = await list(A, false)
+    expect(all.length).toBeGreaterThan(0)
+    expect(all.every((r) => r.is_read)).toBe(true) // A read everything above
+    expect(await list(A, true)).toHaveLength(0)
+    const asC = await list(C, true)
+    expect(asC.length).toBe(all.length)
+    expect(Number(asC[0]!.total_count)).toBe(all.length)
+    expect(await list(C, false, 2, 0)).toHaveLength(2)
+    expect(await list(B, false)).toHaveLength(0)
+  })
+
+  it('cannot be written directly by users', async () => {
+    await as(A, async () => {
+      await rejects(db.query("insert into public.notifications (organization_id, inventory_id, kind, title, body) values ($1, $2, 'low_stock', 'x', 'y')", [orgA, invA]), /permission denied/)
+      await rejects(db.query('select public.generate_alerts()'), /permission denied/)
+    })
+  })
+})

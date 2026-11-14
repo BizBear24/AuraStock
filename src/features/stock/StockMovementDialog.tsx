@@ -76,7 +76,7 @@ function MovementForm({ product, initialType, initialAmount, onClose }: { produc
       client.submitMovement({ product, type: v.type, amount: v.amount, reference: v.reference, note: v.note, operationId }),
     onSettled: () =>
       Promise.all(
-        ['product', 'products', 'movements', 'summary', 'category-stock', 'movement-summary'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })),
+        ['product', 'products', 'movements', 'summary', 'category-stock', 'movement-summary', 'notifications'].map((key) => queryClient.invalidateQueries({ queryKey: [key] })),
       ),
     onSuccess: (result) => {
       if (result.status === 'synced') onClose()

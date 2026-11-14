@@ -9,6 +9,8 @@ import { errorMessage } from '@/lib/supabase'
 import { fetchCategoryStock, fetchSummary } from '@/features/products/api'
 import { fetchMovementSummary, listMovements } from '@/features/stock/api'
 import { MovementList } from '@/features/stock/MovementList'
+import { listNotifications } from '@/features/notifications/api'
+import { NotificationRow } from '@/features/notifications/NotificationsPage'
 import { useWorkspace } from './WorkspaceProvider'
 
 function Metric({ label, value, to, tone }: { label: string; value: number; to?: string; tone?: 'warn' | 'crit' }) {
@@ -35,6 +37,12 @@ export function OverviewPage() {
   const summary = useQuery({ queryKey: ['summary', inventoryId], queryFn: () => fetchSummary(inventoryId), enabled: Boolean(inventoryId) })
   const byCategory = useQuery({ queryKey: ['category-stock', inventoryId], queryFn: () => fetchCategoryStock(inventoryId), enabled: Boolean(inventoryId) })
 
+  const alerts = useQuery({
+    queryKey: ['notifications', organization.organizationId, inventoryId, 'dashboard'],
+    queryFn: () => listNotifications({ organizationId: organization.organizationId, inventoryId, unreadOnly: true, page: 0, pageSize: 5 }),
+    enabled: Boolean(inventoryId),
+    retry: false,
+  })
   const flow = useQuery({ queryKey: ['movement-summary', inventoryId], queryFn: () => fetchMovementSummary(inventoryId, 14), enabled: Boolean(inventoryId) })
   const recent = useQuery({
     queryKey: ['movements', inventoryId, 'recent'],
@@ -83,6 +91,22 @@ export function OverviewPage() {
           <Metric label="Expiring (30d)" value={summary.data.expiring} tone="warn" to="/products?expiry=expiring" />
           <Metric label="Expired" value={summary.data.expired} tone="crit" to="/products?expiry=expired" />
         </div>
+      )}
+
+      {alerts.data && alerts.data.rows.length > 0 && (
+        <Panel className="mt-4 overflow-hidden">
+          <div className="flex items-center justify-between border-b border-line px-4 py-2">
+            <h2 className="font-semibold">Needs attention</h2>
+            <Link to="/notifications" className="text-sm underline">
+              All alerts ({alerts.data.total} unread)
+            </Link>
+          </div>
+          <ul className="divide-y divide-line">
+            {alerts.data.rows.map((n) => (
+              <NotificationRow key={n.id} n={n} />
+            ))}
+          </ul>
+        </Panel>
       )}
 
       <Panel className="mt-4 p-4">
