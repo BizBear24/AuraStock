@@ -497,3 +497,197 @@ describe('demo data', () => {
     expect(Number((await db.query<{ n: string }>('select count(*) as n from public.products where inventory_id = $1', [again])).rows[0]!.n)).toBeGreaterThanOrEqual(35)
   })
 })
+
+describe('transfers between inventories', () => {
+  let wh: string // source
+  let shop: string // destination
+  let rice: string
+  let oil: string
+  let t1: string
+
+  const q = async <T extends Record<string, unknown>>(sql: string, params: unknown[] = []) => (await db.query<T>(sql, params)).rows
+  const qty = async (id: string) => Number((await q<{ quantity: string }>('select quantity from public.products where id = $1', [id]))[0]!.quantity)
+  const dispatch = (uid: string, lines: unknown[], opts: { src?: string; dst?: string; op?: string; note?: string | null } = {}) =>
+    as(uid, async () => (await db.query<{ id: string }>('select public.dispatch_transfer($1, $2, $3::jsonb, $4, $5) as id', [opts.src ?? wh, opts.dst ?? shop, JSON.stringify(lines), opts.note ?? null, opts.op ?? op()])).rows[0]!.id)
+  const receive = (uid: string, transfer: string, lines: unknown[], opId: string = op()) =>
+    as(uid, async () => (await db.query<{ r: { status: string; outstanding: number } }>('select public.receive_transfer($1, $2::jsonb, $3) as r', [transfer, JSON.stringify(lines), opId])).rows[0]!.r)
+  const lineFor = async (transfer: string, product: string) =>
+    (await q<{ id: string; quantity_sent: string; quantity_received: string; destination_product_id: string | null }>(
+      'select id, quantity_sent, quantity_received, destination_product_id from public.transfer_lines where transfer_id = $1 and source_product_id = $2',
+      [transfer, product],
+    ))[0]!
+
+  beforeAll(async () => {
+    wh = (await q<{ id: string }>("insert into public.inventories (organization_id, name, created_by) values ($1, 'Warehouse', $2) returning id", [orgA, A]))[0]!.id
+    shop = (await q<{ id: string }>("insert into public.inventories (organization_id, name, created_by) values ($1, 'Shop', $2) returning id", [orgA, A]))[0]!.id
+    rice = (await q<{ id: string }>("insert into public.products (inventory_id, name, sku, barcode, unit, created_by) values ($1, 'Rice 5kg', 'R-5', '8901234567890', 'bag', $2) returning id", [wh, A]))[0]!.id
+    oil = (await q<{ id: string }>("insert into public.products (inventory_id, name, sku, unit, created_by) values ($1, 'Oil 1L', 'O-1', 'btl', $2) returning id", [wh, A]))[0]!.id
+    await as(A, async () => {
+      await db.query("select public.record_stock_movement($1, 'in', 20, $2)", [rice, op()])
+      await db.query("select public.record_stock_movement($1, 'in', 5, $2)", [oil, op()])
+    })
+  })
+
+  it('dispatch removes stock from the source and leaves the transfer in transit', async () => {
+    t1 = await dispatch(A, [{ product_id: rice, quantity: 8 }, { product_id: oil, quantity: 2 }], { note: 'Weekly top-up' })
+    expect(await qty(rice)).toBe(12)
+    expect(await qty(oil)).toBe(3)
+    const t = (await q<{ status: string; reference: string; note: string }>('select status, reference, note from public.transfers where id = $1', [t1]))[0]!
+    expect(t.status).toBe('in_transit')
+    expect(t.reference).toMatch(/^TR-\d{5}$/)
+    const moves = await q<{ movement_type: string; reference: string; delta: string }>('select movement_type, reference, delta from public.stock_movements where transfer_id = $1 order by delta', [t1])
+    expect(moves.map((m) => [m.movement_type, Number(m.delta), m.reference])).toEqual([['out', -8, t.reference], ['out', -2, t.reference]])
+    const n = await q<{ kind: string }>("select kind from public.notifications where kind = 'transfer_incoming' and inventory_id = $1", [shop])
+    expect(n).toHaveLength(1)
+  })
+
+  it('is idempotent for the same operation id', async () => {
+    const opId = op()
+    const first = await dispatch(A, [{ product_id: oil, quantity: 1 }], { op: opId })
+    expect(await dispatch(A, [{ product_id: oil, quantity: 1 }], { op: opId })).toBe(first)
+    expect(await qty(oil)).toBe(2) // 3 - 1, applied once
+    await as(A, () => db.query('select public.cancel_transfer($1)', [first]))
+    expect(await qty(oil)).toBe(3)
+  })
+
+  it('is all-or-nothing: an overdraw anywhere aborts the whole dispatch', async () => {
+    const before = [await qty(rice), await qty(oil)]
+    await rejects(dispatch(A, [{ product_id: rice, quantity: 1 }, { product_id: oil, quantity: 99 }]), /Oil 1L: Insufficient stock/)
+    expect([await qty(rice), await qty(oil)]).toEqual(before)
+    const count = (await q<{ n: string }>("select count(*) as n from public.transfers where status = 'in_transit'"))[0]!.n
+    expect(Number(count)).toBe(1) // only t1
+  })
+
+  it('validates inventories, lines and roles', async () => {
+    const someone = (await q<{ id: string }>('select id from public.products where inventory_id = $1 limit 1', [invA]))[0]!.id
+    await rejects(dispatch(A, [{ product_id: rice, quantity: 1 }], { dst: wh }), /different destination/)
+    await rejects(dispatch(A, []), /at least one item/)
+    await rejects(dispatch(A, [{ product_id: rice, quantity: 0 }]), /greater than zero/)
+    await rejects(dispatch(A, [{ product_id: rice, quantity: 1 }, { product_id: rice, quantity: 1 }]), /only once/)
+    await rejects(dispatch(A, [{ product_id: someone, quantity: 1 }]), /not part of Warehouse/)
+    await rejects(dispatch(C, [{ product_id: rice, quantity: 1 }]), /permission/) // viewer
+    await rejects(dispatch(B, [{ product_id: rice, quantity: 1 }]), /Inventory not found|permission/) // other org
+  })
+
+  it('refuses transfers across organizations', async () => {
+    const orgB = (await q<{ organization_id: string }>('select organization_id from public.organization_members where user_id = $1', [B]))[0]!.organization_id
+    const foreign = (await q<{ id: string }>("insert into public.inventories (organization_id, name, created_by) values ($1, 'Elsewhere', $2) returning id", [orgB, B]))[0]!.id
+    await rejects(dispatch(A, [{ product_id: rice, quantity: 1 }], { dst: foreign }), /same organization/)
+  })
+
+  it('partial receipt creates the product at the destination and keeps the transfer in transit', async () => {
+    const line = await lineFor(t1, rice)
+    const r = await receive(A, t1, [{ line_id: line.id, quantity: 3 }])
+    expect(r).toEqual({ status: 'in_transit', outstanding: 7 }) // 5 rice + 2 oil remain
+    const dest = (await q<{ id: string; name: string; barcode: string; quantity: string; unit: string }>('select id, name, barcode, quantity, unit from public.products where inventory_id = $1 and sku = $2', [shop, 'R-5']))[0]!
+    expect(dest).toMatchObject({ name: 'Rice 5kg', barcode: '8901234567890', unit: 'bag' })
+    expect(Number(dest.quantity)).toBe(3)
+    expect((await lineFor(t1, rice)).destination_product_id).toBe(dest.id)
+    const mv = (await q<{ movement_type: string; transfer_id: string }>('select movement_type, transfer_id from public.stock_movements where product_id = $1', [dest.id]))[0]!
+    expect(mv).toMatchObject({ movement_type: 'in', transfer_id: t1 })
+  })
+
+  it('does not double count a replayed receive', async () => {
+    const line = await lineFor(t1, rice)
+    const opId = op()
+    await receive(A, t1, [{ line_id: line.id, quantity: 1 }], opId)
+    await receive(A, t1, [{ line_id: line.id, quantity: 1 }], opId)
+    expect(Number((await lineFor(t1, rice)).quantity_received)).toBe(4)
+  })
+
+  it('rejects over-receipt and matches existing destination products by SKU', async () => {
+    const line = await lineFor(t1, rice)
+    await rejects(receive(A, t1, [{ line_id: line.id, quantity: 5 }]), /cannot receive more than was sent \(sent 8, already received 4\)/)
+    await rejects(receive(B, t1, [{ line_id: line.id, quantity: 1 }]), /not found or you do not have permission/)
+    const existing = (await q<{ id: string }>("insert into public.products (inventory_id, name, sku, unit, created_by) values ($1, 'Oil (shop name)', 'o-1', 'btl', $2) returning id", [shop, A]))[0]!.id
+    const oilLine = await lineFor(t1, oil)
+    await receive(A, t1, [{ line_id: oilLine.id, quantity: 2 }])
+    expect((await lineFor(t1, oil)).destination_product_id).toBe(existing) // matched by SKU, case-insensitive
+    expect(await qty(existing)).toBe(2)
+  })
+
+  it('completes automatically when everything has arrived', async () => {
+    const line = await lineFor(t1, rice)
+    const r = await receive(A, t1, [{ line_id: line.id, quantity: 4 }])
+    expect(r).toEqual({ status: 'completed', outstanding: 0 })
+    const t = (await q<{ status: string; completed_at: string }>('select status, completed_at from public.transfers where id = $1', [t1]))[0]!
+    expect(t.status).toBe('completed')
+    expect(t.completed_at).not.toBeNull()
+    await rejects(receive(A, t1, [{ line_id: line.id, quantity: 1 }]), /already completed/)
+    await rejects(as(A, () => db.query('select public.cancel_transfer($1)', [t1])), /already completed/)
+  })
+
+  it('conserves stock: sent equals received across both inventories', async () => {
+    expect(await qty(rice)).toBe(12) // source
+    const destRice = (await q<{ quantity: string }>("select quantity from public.products where inventory_id = $1 and sku = 'R-5'", [shop]))[0]!.quantity
+    expect(Number(destRice) + (await qty(rice))).toBe(20)
+    const ledger = await q<{ net: string }>('select sum(delta) as net from public.stock_movements where transfer_id = $1', [t1])
+    expect(Number(ledger[0]!.net)).toBe(0) // out and in cancel
+  })
+
+  it('closing short records the shortage and raises a discrepancy alert', async () => {
+    const t2 = await dispatch(A, [{ product_id: rice, quantity: 4 }])
+    const line = await lineFor(t2, rice)
+    await receive(A, t2, [{ line_id: line.id, quantity: 3 }])
+    await rejects(as(C, () => db.query('select public.close_transfer($1)', [t2])), /permission/)
+    await as(A, () => db.query("select public.close_transfer($1, 'One box damaged')", [t2]))
+    const t = (await q<{ status: string; closed_note: string }>('select status, closed_note from public.transfers where id = $1', [t2]))[0]!
+    expect(t).toEqual({ status: 'completed', closed_note: 'One box damaged' })
+    const l = await lineFor(t2, rice)
+    expect(Number(l.quantity_sent) - Number(l.quantity_received)).toBe(1)
+    const alert = await q<{ body: string }>("select body from public.notifications where kind = 'transfer_discrepancy'")
+    expect(alert.at(-1)!.body).toContain('1 unit(s)')
+    expect(await qty(rice)).toBe(8) // 12 - 4; the missing unit is not returned automatically
+  })
+
+  it('cancelling returns everything to the source, but not after a receipt', async () => {
+    const before = await qty(rice)
+    const t3 = await dispatch(A, [{ product_id: rice, quantity: 2 }])
+    expect(await qty(rice)).toBe(before - 2)
+    await as(A, () => db.query('select public.cancel_transfer($1)', [t3]))
+    expect(await qty(rice)).toBe(before)
+    expect((await q<{ status: string }>('select status from public.transfers where id = $1', [t3]))[0]!.status).toBe('cancelled')
+
+    const t4 = await dispatch(A, [{ product_id: rice, quantity: 2 }])
+    await receive(A, t4, [{ line_id: (await lineFor(t4, rice)).id, quantity: 1 }])
+    await rejects(as(A, () => db.query('select public.cancel_transfer($1)', [t4])), /already been received/)
+  })
+
+  it('cannot be written directly, is private to the organization, and is audited', async () => {
+    await as(A, async () => {
+      await rejects(db.query("update public.transfers set status = 'completed'"), /permission denied/)
+      await rejects(db.query('update public.transfer_lines set quantity_received = quantity_sent'), /permission denied/)
+    })
+    await as(B, async () => {
+      expect((await db.query('select 1 from public.transfers')).rows).toHaveLength(0)
+      expect((await db.query('select 1 from public.transfer_lines')).rows).toHaveLength(0)
+    })
+    await as(C, async () => {
+      expect((await db.query('select 1 from public.transfers')).rows.length).toBeGreaterThan(0)
+    })
+    const actions = (await q<{ action: string }>("select distinct action from public.audit_logs where action like 'transfer.%'")).map((r) => r.action).sort()
+    expect(actions).toEqual(['transfer.cancel', 'transfer.close', 'transfer.complete', 'transfer.dispatch', 'transfer.receive'])
+  })
+
+  it('refuses to receive expired stock at the destination', async () => {
+    const milk = (await q<{ id: string }>("insert into public.products (inventory_id, name, sku, unit, expires_on, created_by) values ($1, 'Old milk', 'MK-1', 'btl', current_date + 5, $2) returning id", [wh, A]))[0]!.id
+    await as(A, () => db.query("select public.record_stock_movement($1, 'in', 4, $2)", [milk, op()]))
+    await db.query('update public.products set expires_on = current_date - 1 where id = $1', [milk])
+    const t = await dispatch(A, [{ product_id: milk, quantity: 2 }]) // expired stock may leave (disposal) ...
+    const line = await lineFor(t, milk)
+    await rejects(receive(A, t, [{ line_id: line.id, quantity: 2 }]), /Old milk: .*expired/)
+    // The failed receive left nothing behind: no destination product, nothing counted as received.
+    expect(Number((await lineFor(t, milk)).quantity_received)).toBe(0)
+    expect(await q('select 1 from public.products where inventory_id = $1 and sku = $2', [shop, 'MK-1'])).toHaveLength(0)
+  })
+
+  it('carries the expiration date to a product created at the destination', async () => {
+    const yogurt = (await q<{ id: string }>("insert into public.products (inventory_id, name, sku, unit, expires_on, created_by) values ($1, 'Yogurt', 'YG-1', 'tub', current_date + 9, $2) returning id", [wh, A]))[0]!.id
+    await as(A, () => db.query("select public.record_stock_movement($1, 'in', 6, $2)", [yogurt, op()]))
+    const t = await dispatch(A, [{ product_id: yogurt, quantity: 3 }])
+    await receive(A, t, [{ line_id: (await lineFor(t, yogurt)).id, quantity: 3 }])
+    const dest = (await q<{ expires_on: string }>("select to_char(expires_on, 'YYYY-MM-DD') as expires_on from public.products where inventory_id = $1 and sku = 'YG-1'", [shop]))[0]!
+    const src = (await q<{ expires_on: string }>("select to_char(expires_on, 'YYYY-MM-DD') as expires_on from public.products where id = $1", [yogurt]))[0]!
+    expect(dest.expires_on).toBe(src.expires_on)
+  })
+})
