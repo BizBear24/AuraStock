@@ -79,3 +79,28 @@ export async function fetchMovementSummary(inventoryId: string, days = 14): Prom
   if (error) throw error
   return (data ?? []) as MovementDay[]
 }
+
+/** One page of movements inside an optional time range, oldest first, for exports. */
+export async function fetchMovementsPage(
+  inventoryId: string,
+  fromIso: string | null,
+  toIso: string | null,
+  offset: number,
+  limit: number,
+): Promise<Movement[]> {
+  let q = supabase
+    .from('stock_movements')
+    .select(
+      'id, product_id, movement_type, delta, quantity_before, quantity_after, reference, note, created_at, product:products(name, unit, sku), author:profiles!created_by(full_name, email)',
+    )
+    .eq('inventory_id', inventoryId)
+  if (fromIso) q = q.gte('created_at', fromIso)
+  if (toIso) q = q.lt('created_at', toIso)
+  const { data, error } = await q
+    .order('created_at', { ascending: true })
+    .order('id')
+    .range(offset, offset + limit - 1)
+    .returns<Movement[]>()
+  if (error) throw error
+  return data
+}

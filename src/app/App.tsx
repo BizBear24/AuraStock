@@ -18,6 +18,7 @@ const MovementsPage = lazy(() => import('@/features/stock/MovementsPage').then((
 const ScanPage = lazy(() => import('@/features/scan/ScanPage').then((m) => ({ default: m.ScanPage })))
 const SyncPage = lazy(() => import('@/offline/SyncPage').then((m) => ({ default: m.SyncPage })))
 const NotificationsPage = lazy(() => import('@/features/notifications/NotificationsPage').then((m) => ({ default: m.NotificationsPage })))
+const DataPage = lazy(() => import('@/features/data/DataPage').then((m) => ({ default: m.DataPage })))
 const ProfilePage = lazy(() => import('@/features/auth/ProfilePage').then((m) => ({ default: m.ProfilePage })))
 
 const queryClient = new QueryClient({
@@ -70,6 +71,7 @@ export function App() {
                   <Route path="scan" element={<ScanPage />} />
                   <Route path="sync" element={<SyncPage />} />
                   <Route path="notifications" element={<NotificationsPage />} />
+                  <Route path="data" element={<DataPage />} />
                   <Route path="movements" element={<MovementsPage />} />
                   <Route path="inventories" element={<InventoriesPage />} />
                   <Route path="profile" element={<ProfilePage />} />

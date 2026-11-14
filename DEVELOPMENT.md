@@ -36,7 +36,8 @@ Typecheck, lint and test before every commit: `npm run typecheck && npm run lint
 - [ ] Phase 6 – Alerts, import/export, reports, calculator
   - [x] 6a Alerts: stored low/out-of-stock/expiring/expired notifications, bell with unread count, Alerts page (filters, mark read), dashboard "Needs attention"; migration 0005; tested on real SQL (transitions, no duplicates, expiry job, per-user read state, isolation)
   - [ ] 6a not verified live: the hourly pg_cron schedule needs the extension enabled on your Supabase project
-  - [ ] 6b CSV/XLSX import and export
+  - [x] 6b CSV/XLSX import and export: column mapping with auto-detection, per-row validation, in-file and existing-product duplicate detection, preview before commit, atomic import (migration 0006); CSV (UTF-8 BOM, formula-injection safe) and XLSX (frozen bold header, filter, real numbers/dates) export of products and movements. Tested: parsing, validation, CSV/XLSX round trips, import function on real SQL
+  - [ ] 6b limits: files up to 5 MB / 5000 rows per import; import and movement export need a connection; product export works offline from the device copy; CSV cells starting with = + - @ are prefixed with ' on export (spreadsheet safety), so such SKUs gain a leading quote in CSV
   - [ ] 6c PDF reports and calculator
 - [ ] Phase 7 – Team collaboration
 - [ ] Phase 8 – Backups, Google Drive, NFC

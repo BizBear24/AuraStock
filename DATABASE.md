@@ -61,3 +61,7 @@ Manual two-session check on a real database: open two SQL sessions as an editor,
 - Helpers: `list_notifications`, `unread_notification_count`, `mark_notifications_read`.
 - The 30-day expiry window is fixed and shared with `DEFAULT_EXPIRY_WINDOW_DAYS` in `src/domain/product-status.ts`. Low-stock thresholds are configurable per product (`min_stock`).
 - Alerts are not yet pushed live; the bell polls once a minute and refreshes after stock changes. Realtime push arrives with Phase 7.
+
+## Phase 6b (`0006_import.sql`)
+
+`import_products(inventory, rows jsonb, update_existing, operation_id)`: the commit step of a CSV/XLSX import. One transaction: any failing row aborts everything and reports `Row n: reason`. New products with an opening quantity get a normal stock-in movement (reference `IMPORT`) so the ledger stays complete; existing products matched by barcode, QR value or SKU are skipped, or have their details (never their quantity) updated. Limit 5000 rows per call. Requires editor role; writes an audit entry.

@@ -326,3 +326,73 @@ describe('alerts and notifications', () => {
     })
   })
 })
+
+describe('bulk import', () => {
+  let inv: string
+  const run = (uid: string, rows: unknown[], update = false, opId: string = op()) =>
+    as(uid, async () => (await db.query<{ r: { created: number; updated: number; skipped: number } }>('select public.import_products($1, $2::jsonb, $3, $4) as r', [inv, JSON.stringify(rows), update, opId])).rows[0]!.r)
+  const products = async () =>
+    (await db.query<{ name: string; sku: string | null; quantity: string }>('select name, sku, quantity from public.products where inventory_id = $1 order by name', [inv])).rows
+
+  beforeAll(async () => {
+    inv = (await db.query<{ id: string }>("insert into public.inventories (organization_id, name, created_by) values ($1, 'ImportInv', $2) returning id", [orgA, A])).rows[0]!.id
+  })
+
+  it('creates products with categories, tags and an opening-stock ledger entry', async () => {
+    const result = await run(A, [
+      { name: 'Flour', sku: 'F-1', barcode: '111', category: 'Baking', tags: ['Dry', 'Bulk'], unit: 'kg', min_stock: '5', quantity: '20' },
+      { name: 'Yeast', sku: 'Y-1', tags: [], quantity: '' },
+    ])
+    expect(result).toEqual({ created: 2, updated: 0, skipped: 0 })
+    expect((await products()).map((p) => [p.name, Number(p.quantity)])).toEqual([['Flour', 20], ['Yeast', 0]])
+    const ledger = (await db.query<{ movement_type: string; reference: string; delta: string }>(
+      "select m.movement_type, m.reference, m.delta from public.stock_movements m join public.products p on p.id = m.product_id where p.inventory_id = $1",
+      [inv],
+    )).rows
+    expect(ledger).toEqual([{ movement_type: 'in', reference: 'IMPORT', delta: '20.000' }])
+    const tags = (await db.query<{ name: string }>('select t.name from public.tags t where t.inventory_id = $1 order by t.name', [inv])).rows.map((t) => t.name)
+    expect(tags).toEqual(['Bulk', 'Dry'])
+  })
+
+  it('skips existing products by default and matches SKU case-insensitively', async () => {
+    expect(await run(A, [{ name: 'Flour again', sku: 'f-1' }, { name: 'Sugar', sku: 'S-1' }])).toEqual({ created: 1, updated: 0, skipped: 1 })
+    expect((await products()).map((p) => p.name)).toContain('Flour')
+    expect((await products()).map((p) => p.name)).not.toContain('Flour again')
+  })
+
+  it('updates details of existing products on request without touching quantity', async () => {
+    const r = await run(A, [{ name: 'Flour (organic)', sku: 'F-1', barcode: '111', category: 'Baking', tags: ['Dry'], quantity: '999' }], true)
+    expect(r).toEqual({ created: 0, updated: 1, skipped: 0 })
+    const flour = (await products()).find((p) => p.sku === 'F-1')!
+    expect(flour.name).toBe('Flour (organic)')
+    expect(Number(flour.quantity)).toBe(20)
+    const tagCount = (await db.query<{ n: string }>("select count(*) as n from public.product_tags pt join public.products p on p.id = pt.product_id where p.sku = 'F-1'")).rows[0]!.n
+    expect(Number(tagCount)).toBe(1)
+  })
+
+  it('is all-or-nothing and reports the failing row', async () => {
+    const before = (await products()).length
+    await rejects(run(A, [{ name: 'Good one', sku: 'G-1' }, { name: 'Bad date', sku: 'B-1', expires_on: 'not-a-date' }]), /Row 2:/)
+    await rejects(run(A, [{ name: 'Fine', sku: 'OK-1' }, { sku: 'NO-NAME' }]), /Row 2: name is required/)
+    expect((await products()).length).toBe(before)
+  })
+
+  it('treats a repeated SKU inside one file as an existing product (the preview flags it first)', async () => {
+    expect(await run(A, [{ name: 'Dup A', sku: 'D-1' }, { name: 'Dup B', sku: 'D-1' }])).toEqual({ created: 1, updated: 0, skipped: 1 })
+  })
+
+  it('refuses opening stock for expired products', async () => {
+    await rejects(run(A, [{ name: 'Old milk', sku: 'M-1', expires_on: '2000-01-01', quantity: '3' }]), /Row 1: .*expired/)
+  })
+
+  it('enforces permissions and size limits', async () => {
+    await rejects(run(B, [{ name: 'X' }]), /do not have permission/)
+    await rejects(run(C, [{ name: 'X' }]), /do not have permission/) // viewer
+    await rejects(run(A, Array.from({ length: 5001 }, (_, i) => ({ name: `n${i}` }))), /at most 5000/)
+  })
+
+  it('writes an audit entry', async () => {
+    const n = (await db.query<{ n: string }>("select count(*) as n from public.audit_logs where action = 'import.products' and inventory_id = $1", [inv])).rows[0]!.n
+    expect(Number(n)).toBeGreaterThanOrEqual(3)
+  })
+})
