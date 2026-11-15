@@ -51,13 +51,15 @@ interface ConfirmProps {
   confirmLabel: string
   destructive?: boolean
   loading?: boolean
+  /** Keep the confirm button disabled, e.g. until a typed confirmation matches. */
+  confirmDisabled?: boolean
   error?: string | null
   /** Optional extra content (for example a note field) shown above the buttons. */
   children?: ReactNode
   onConfirm: () => void
 }
 
-export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel, destructive, loading, error, children, onConfirm }: ConfirmProps) {
+export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel, destructive, loading, confirmDisabled, error, children, onConfirm }: ConfirmProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title={title} description={description}>
       {error && (
@@ -68,7 +70,7 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirmL
       {children && <div className="mb-3">{children}</div>}
       <div className="flex justify-end gap-2">
         <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-        <Button variant={destructive ? 'danger' : 'primary'} loading={loading} onClick={onConfirm}>
+        <Button variant={destructive ? 'danger' : 'primary'} loading={loading} disabled={confirmDisabled} onClick={onConfirm}>
           {confirmLabel}
         </Button>
       </div>

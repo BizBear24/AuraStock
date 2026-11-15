@@ -73,3 +73,10 @@ Manual two-session check on a real database: open two SQL sessions as an editor,
 ## Transfers (`0008_transfers.sql`)
 
 `transfers` and `transfer_lines` (read-only to clients), `stock_movements.transfer_id` (not a foreign key, so the immutable ledger can never be blocked or altered), `record_stock_movement` gains an optional `p_transfer` argument, and `dispatch_transfer`, `receive_transfer`, `close_transfer`, `cancel_transfer` do all the work in single transactions. New alert kinds: `transfer_incoming`, `transfer_discrepancy`. See DEVELOPMENT.md for behaviour and guarantees.
+
+## Team collaboration (`0009_team.sql`)
+
+- `invitations`: an invitation addresses an **email**, not a secret link. It is visible to the organization's admins and to the invitee (matched against the verified `profiles.email`). Accepting requires that match, a pending and unexpired invitation (14 days), and that the inviter still has the authority to grant the role (owners for admin invitations).
+- Membership is changed **only** through `invite_member`, `accept_invitation`, `decline_invitation`, `revoke_invitation`, `set_member_role`, `remove_member` and `leave_organization`; direct writes to `organization_members` and `invitations` are revoked. Rules: owners can do anything; admins manage only editors and viewers and cannot change themselves; an organization always keeps at least one owner.
+- Activity log: triggers record product create/update/archive/restore/delete, inventory changes and organization renames in `audit_logs`; stock, transfer, import and member functions record their own entries. `list_activity` serves a filterable, paged, named feed to admins and owners.
+- Realtime: the migration adds `products`, `stock_movements`, `notifications`, `transfers`, `organization_members`, `invitations` and `inventories` to the `supabase_realtime` publication (skipped where it does not exist). Row-level security decides which rows a subscriber receives.

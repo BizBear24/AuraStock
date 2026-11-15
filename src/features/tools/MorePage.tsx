@@ -1,4 +1,4 @@
-import { Bell, Calculator, CloudOff, Truck, FileSpreadsheet, FileText, User, Warehouse } from 'lucide-react'
+import { Bell, Calculator, CloudOff, History, Settings, Truck, Users, FileSpreadsheet, FileText, User, Warehouse } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { Link } from 'react-router-dom'
 import { PageHeader, Panel } from '@/components/ui/panel'
@@ -12,12 +12,15 @@ interface Item {
 
 const ITEMS: Item[] = [
   { to: '/transfers', label: 'Transfers', description: 'Scan stock out and in between inventories', icon: Truck },
+  { to: '/team', label: 'Team', description: 'Members, invitations, roles and permissions', icon: Users },
+  { to: '/activity', label: 'Activity', description: 'Who did what (admins and owners)', icon: History },
   { to: '/notifications', label: 'Alerts', description: 'Low stock, out of stock and expiry alerts', icon: Bell },
   { to: '/data', label: 'Import & export', description: 'CSV and Excel files', icon: FileSpreadsheet },
   { to: '/reports', label: 'Reports', description: 'PDF inventory, stock and movement reports', icon: FileText },
   { to: '/calculator', label: 'Calculator', description: 'Quick arithmetic for counts', icon: Calculator },
   { to: '/sync', label: 'Sync', description: 'Changes waiting to be sent to the server', icon: CloudOff },
   { to: '/inventories', label: 'Inventories', description: 'Create and switch inventories', icon: Warehouse },
+  { to: '/settings', label: 'Settings', description: 'Rename or delete the organization', icon: Settings },
   { to: '/profile', label: 'Profile', description: 'Your account and sign out', icon: User },
 ]
 

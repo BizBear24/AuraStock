@@ -40,7 +40,11 @@ Typecheck, lint and test before every commit: `npm run typecheck && npm run lint
   - [ ] 6b limits: files up to 5 MB / 5000 rows per import; import and movement export need a connection; product export works offline from the device copy; CSV cells starting with = + - @ are prefixed with ' on export (spreadsheet safety), so such SKUs gain a leading quote in CSV
   - [x] 6c PDF reports (inventory report, stock summary by category with an attention list, movement report for a date range) with page numbers and summary strip; safe arithmetic calculator (no eval); More page for mobile; Sign out on the Profile page
   - [ ] 6c limits: PDFs use a standard Latin-1 font, so characters outside Western European alphabets print as "?" (use the Excel export for full Unicode); movement report needs a connection; reports are generated in the browser, so very large inventories (tens of thousands of rows) may be slow
-- [ ] Phase 7 – Team collaboration
+- [x] Phase 7 – Team collaboration: invitations by verified email (no email service or secret links needed), member and role management with database-enforced rules, last-owner protection, leave organization, roles and permissions matrix, activity log (stock, products, inventories, transfers, team, imports), organization settings (rename, create another, delete with typed confirmation), live updates over Supabase Realtime; migration 0009
+  - [x] Tested on real SQL (70 database tests): invitation privacy and expiry, accept needs a matching email, inviter authority checked at accept time, admin limits, owner promotion, last owner can never leave, direct membership writes blocked, audit triggers, activity feed access, deleting an organization with its history
+  - [ ] **Not verified live**: Realtime delivery (needs two signed-in browsers; the subscription logic is unit tested with a fake channel) and invitation acceptance with real accounts
+  - [ ] Decision: access is organization-level. Every member sees every inventory of their organization. Per-inventory restrictions (`inventory_memberships`) are not implemented
+  - [ ] Invitations are not emailed (no mail service is configured): tell the person to sign in or sign up with the invited address; the invitation then appears in the app
 - [ ] Phase 8 – Backups, Google Drive, NFC
 - [ ] Phase 9 – PWA and polish
 

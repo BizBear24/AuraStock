@@ -7,6 +7,7 @@ import { errorMessage } from '@/lib/supabase'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { organizationSchema } from '@/features/auth/schemas'
 import type { z } from 'zod'
+import { InvitationsList } from '@/features/team/InvitationsList'
 import { createOrganization } from './api'
 
 type Values = z.infer<typeof organizationSchema>
@@ -33,6 +34,9 @@ export function OnboardingPage() {
         <p className="mb-4 text-sm text-fg-2">
           An organization holds your inventories, products and team. Signed in as {user?.email}.
         </p>
+        <div className="mb-4">
+          <InvitationsList />
+        </div>
         <form
           onSubmit={handleSubmit((v) => create.mutate(v))}
           className="space-y-3 rounded-lg border border-line bg-bg-2 p-5"

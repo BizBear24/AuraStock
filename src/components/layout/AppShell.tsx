@@ -1,9 +1,11 @@
-import { ArrowLeftRight, Bell, Boxes, Truck, Calculator, FileSpreadsheet, FileText, MoreHorizontal, LayoutDashboard, LogOut, Package, ScanLine, User, Warehouse } from 'lucide-react'
+import { ArrowLeftRight, Bell, Boxes, History, Settings, Truck, Users, Calculator, FileSpreadsheet, FileText, MoreHorizontal, LayoutDashboard, LogOut, Package, ScanLine, User, Warehouse } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { useOffline } from '@/offline/OfflineProvider'
 import { SyncBadge, SyncBanner } from '@/offline/SyncStatus'
+import { useRealtime, type LiveStatus } from '@/features/realtime/useRealtime'
+import { InvitationsList } from '@/features/team/InvitationsList'
 import { useInventoryCache } from '@/offline/useInventoryCache'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/features/auth/AuthProvider'
@@ -20,12 +22,25 @@ const NAV = [
   { to: '/data', label: 'Import & export', icon: FileSpreadsheet, end: false },
   { to: '/reports', label: 'Reports', icon: FileText, end: false },
   { to: '/calculator', label: 'Calculator', icon: Calculator, end: false },
+  { to: '/team', label: 'Team', icon: Users, end: false },
+  { to: '/activity', label: 'Activity', icon: History, end: false },
+  { to: '/settings', label: 'Settings', icon: Settings, end: false },
   { to: '/inventories', label: 'Inventories', icon: Warehouse, end: false },
   { to: '/profile', label: 'Profile', icon: User, end: false },
 ] as const
 
 /** Sections with a place in the mobile bottom bar; everything else lives under More. */
 const MOBILE_PRIMARY: string[] = ['/', '/products', '/scan', '/movements']
+
+function LiveDot({ status }: { status: LiveStatus }) {
+  const label = status === 'live' ? 'Live updates on' : status === 'connecting' ? 'Connecting to live updates' : 'Live updates paused'
+  return (
+    <span title={label} role="img" aria-label={label} className="hidden h-8 shrink-0 items-center gap-1.5 text-xs text-fg-2 sm:flex">
+      <span aria-hidden className={cn('h-2 w-2 rounded-full', status === 'live' ? 'bg-ok' : 'bg-fg-2')} />
+      {status === 'live' ? 'Live' : ''}
+    </span>
+  )
+}
 
 function WorkspaceSwitcher() {
   const { memberships, organization, inventories, inventory, setOrganizationId, setInventoryId } = useWorkspace()
@@ -64,18 +79,19 @@ function WorkspaceSwitcher() {
 
 export function AppShell() {
   const { user, signOut } = useAuth()
-  const { inventory } = useWorkspace()
+  const { organization, inventory, setOrganizationId } = useWorkspace()
   const { snapshot } = useOffline()
   const [confirmSignOut, setConfirmSignOut] = useState(false)
   const unsynced = snapshot.pending + snapshot.failed + snapshot.conflicts
   useInventoryCache(inventory?.id)
+  const live = useRealtime(organization.organizationId, inventory?.id)
   return (
     <div className="flex h-full">
       <aside className="hidden w-56 shrink-0 flex-col border-r border-line bg-bg-2 md:flex">
         <div className="flex h-12 items-center gap-2 border-b border-line px-4 font-semibold tracking-tight">
           <Boxes className="h-4 w-4" aria-hidden /> AuraStock
         </div>
-        <nav aria-label="Primary" className="flex-1 space-y-0.5 p-2">
+        <nav aria-label="Primary" className="flex-1 space-y-0.5 overflow-y-auto p-2">
           {NAV.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
@@ -110,6 +126,7 @@ export function AppShell() {
           <div className="min-w-0 flex-1 md:max-w-xl">
             <WorkspaceSwitcher />
           </div>
+          <LiveDot status={live} />
           <SyncBadge />
           <NotificationBell />
           <NavLink to="/profile" aria-label="Profile" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-fg-2 hover:bg-surface md:hidden">
@@ -117,6 +134,7 @@ export function AppShell() {
           </NavLink>
         </header>
         <SyncBanner />
+        <InvitationsList compact onAccepted={setOrganizationId} />
         {inventory?.is_demo && (
           <div role="status" className="flex items-center gap-2 border-b border-line bg-surface px-3 py-1.5 text-sm md:px-6">
             <span className="font-semibold text-info">Demo data.</span>

@@ -25,6 +25,9 @@ const MorePage = lazy(() => import('@/features/tools/MorePage').then((m) => ({ d
 const TransfersPage = lazy(() => import('@/features/transfers/TransfersPage').then((m) => ({ default: m.TransfersPage })))
 const NewTransferPage = lazy(() => import('@/features/transfers/NewTransferPage').then((m) => ({ default: m.NewTransferPage })))
 const TransferDetailPage = lazy(() => import('@/features/transfers/TransferDetailPage').then((m) => ({ default: m.TransferDetailPage })))
+const TeamPage = lazy(() => import('@/features/team/TeamPage').then((m) => ({ default: m.TeamPage })))
+const ActivityPage = lazy(() => import('@/features/team/ActivityPage').then((m) => ({ default: m.ActivityPage })))
+const SettingsPage = lazy(() => import('@/features/team/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 const ProfilePage = lazy(() => import('@/features/auth/ProfilePage').then((m) => ({ default: m.ProfilePage })))
 
 const queryClient = new QueryClient({
@@ -84,6 +87,9 @@ export function App() {
                   <Route path="transfers" element={<TransfersPage />} />
                   <Route path="transfers/new" element={<NewTransferPage />} />
                   <Route path="transfers/:id" element={<TransferDetailPage />} />
+                  <Route path="team" element={<TeamPage />} />
+                  <Route path="activity" element={<ActivityPage />} />
+                  <Route path="settings" element={<SettingsPage />} />
                   <Route path="movements" element={<MovementsPage />} />
                   <Route path="inventories" element={<InventoriesPage />} />
                   <Route path="profile" element={<ProfilePage />} />
