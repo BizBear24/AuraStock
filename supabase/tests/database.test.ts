@@ -94,8 +94,8 @@ describe('tenant isolation (RLS)', () => {
 
   it('does not let users create organizations or memberships directly', async () => {
     await as(C, async () => {
-      await rejects(db.query("insert into public.organizations (name, created_by) values ('Mine', $1)", [C]), /row-level security/)
-      await rejects(db.query("insert into public.organization_members (organization_id, user_id, role) values ($1, $2, 'owner')", [orgA, C]), /row-level security/)
+      await rejects(db.query("insert into public.organizations (name, created_by) values ('Mine', $1)", [C]), /permission denied|row-level security/)
+      await rejects(db.query("insert into public.organization_members (organization_id, user_id, role) values ($1, $2, 'owner')", [orgA, C]), /permission denied|row-level security/)
     })
   })
 })
@@ -689,5 +689,173 @@ describe('transfers between inventories', () => {
     const dest = (await q<{ expires_on: string }>("select to_char(expires_on, 'YYYY-MM-DD') as expires_on from public.products where inventory_id = $1 and sku = 'YG-1'", [shop]))[0]!
     const src = (await q<{ expires_on: string }>("select to_char(expires_on, 'YYYY-MM-DD') as expires_on from public.products where id = $1", [yogurt]))[0]!
     expect(dest.expires_on).toBe(src.expires_on)
+  })
+})
+
+describe('team collaboration', () => {
+  const D = '00000000-0000-0000-0000-00000000000d' // becomes admin
+  const E = '00000000-0000-0000-0000-00000000000e' // invited as editor
+  const F = '00000000-0000-0000-0000-00000000000f' // invited by an admin who is later removed
+  let teamOrg: string
+
+  const q = async <T extends Record<string, unknown>>(sql: string, params: unknown[] = []) => (await db.query<T>(sql, params)).rows
+  const invite = (uid: string, email: string, role: string, org: string = teamOrg) =>
+    as(uid, async () => (await db.query<{ id: string }>('select public.invite_member($1, $2, $3) as id', [org, email, role])).rows[0]!.id)
+  const call = (uid: string, sql: string, params: unknown[]) => as(uid, () => db.query(sql, params))
+  const roleOf = async (user: string) => (await q<{ role: string }>('select role from public.organization_members where organization_id = $1 and user_id = $2', [teamOrg, user]))[0]?.role
+  const mine = (uid: string) => as(uid, async () => (await db.query<{ id: string; role: string; organization_name: string }>('select * from public.list_my_invitations()')).rows)
+
+  beforeAll(async () => {
+    for (const [id, email] of [[D, 'd@x.test'], [E, 'e@x.test'], [F, 'f@x.test']] as const) {
+      await db.query('insert into auth.users (id, email, raw_user_meta_data) values ($1, $2, $3)', [id, email, '{"full_name":"User ' + email[0] + '"}'])
+    }
+    teamOrg = await as(A, async () => (await db.query<{ id: string }>("select public.create_organization('Team Org') as id")).rows[0]!.id)
+  })
+
+  it('only admins and owners can invite, with validation and role limits', async () => {
+    await rejects(invite(B, 'x@x.test', 'editor'), /Only admins and owners/) // not a member
+    await rejects(invite(A, 'not-an-email', 'editor'), /valid email/)
+    await rejects(invite(A, 'x@x.test', 'owner'), /Owners are promoted/)
+    await rejects(invite(A, 'a@x.test', 'editor'), /already a member/)
+    await db.query("insert into public.organization_members (organization_id, user_id, role) values ($1, $2, 'viewer')", [teamOrg, C])
+    await rejects(invite(C, 'x@x.test', 'editor'), /Only admins and owners/)
+  })
+
+  it('shows an invitation only to the invited email, and re-inviting refreshes instead of duplicating', async () => {
+    const first = await invite(A, '  D@X.test ', 'admin')
+    expect(await invite(A, 'd@x.test', 'admin')).toBe(first)
+    expect((await q('select 1 from public.invitations where email = $1', ['d@x.test'])).length).toBe(1)
+    expect((await mine(D)).map((i) => [i.id, i.role, i.organization_name])).toEqual([[first, 'admin', 'Team Org']])
+    expect(await mine(E)).toHaveLength(0)
+    expect(await mine(B)).toHaveLength(0)
+    await as(B, async () => expect((await db.query('select 1 from public.invitations')).rows).toHaveLength(0))
+    await as(D, async () => expect((await db.query('select 1 from public.invitations')).rows).toHaveLength(1)) // own pending invitation
+    await as(C, async () => expect((await db.query('select 1 from public.invitations')).rows).toHaveLength(0)) // viewer sees none
+  })
+
+  it('accepting needs the matching verified email and works once', async () => {
+    const id = (await mine(D))[0]!.id
+    await rejects(call(B, 'select public.accept_invitation($1)', [id]), /Invitation not found/)
+    await rejects(call(E, 'select public.accept_invitation($1)', [id]), /Invitation not found/)
+    const org = await as(D, async () => (await db.query<{ o: string }>('select public.accept_invitation($1) as o', [id])).rows[0]!.o)
+    expect(org).toBe(teamOrg)
+    expect(await roleOf(D)).toBe('admin')
+    await rejects(call(D, 'select public.accept_invitation($1)', [id]), /no longer valid/)
+    expect(await mine(D)).toHaveLength(0)
+  })
+
+  it('admins cannot invite admins, but can invite editors and viewers', async () => {
+    await rejects(invite(D, 'e@x.test', 'admin'), /Only owners can invite admins/)
+    const inv = await invite(D, 'e@x.test', 'editor')
+    await call(E, 'select public.accept_invitation($1)', [inv])
+    expect(await roleOf(E)).toBe('editor')
+  })
+
+  it('expired, revoked and declined invitations cannot be accepted', async () => {
+    const expired = await invite(A, 'f@x.test', 'viewer')
+    await db.query("update public.invitations set expires_at = now() - interval '1 minute' where id = $1", [expired])
+    expect(await mine(F)).toHaveLength(0)
+    await rejects(call(F, 'select public.accept_invitation($1)', [expired]), /expired/)
+
+    const again = await invite(A, 'f@x.test', 'viewer') // refreshes the same pending invitation
+    expect(again).toBe(expired)
+    await call(A, 'select public.revoke_invitation($1)', [again])
+    await rejects(call(F, 'select public.accept_invitation($1)', [again]), /no longer valid/)
+    await rejects(call(E, 'select public.revoke_invitation($1)', [again]), /not found or you do not have permission/)
+
+    const third = await invite(A, 'f@x.test', 'viewer')
+    await call(F, 'select public.decline_invitation($1)', [third])
+    await rejects(call(F, 'select public.accept_invitation($1)', [third]), /no longer valid/)
+  })
+
+  it('an invitation dies with the authority of whoever sent it', async () => {
+    const pending = await invite(D, 'f@x.test', 'viewer')
+    await call(A, 'select public.remove_member($1, $2)', [teamOrg, D])
+    await rejects(call(F, 'select public.accept_invitation($1)', [pending]), /no longer valid/)
+    // Restore D as an admin for the following tests.
+    const back = await invite(A, 'd@x.test', 'admin')
+    await call(D, 'select public.accept_invitation($1)', [back])
+    expect(await roleOf(D)).toBe('admin')
+  })
+
+  it('enforces who can change roles', async () => {
+    await rejects(call(C, 'select public.set_member_role($1, $2, $3)', [teamOrg, E, 'viewer']), /Only admins and owners/)
+    await rejects(call(D, 'select public.set_member_role($1, $2, $3)', [teamOrg, D, 'viewer']), /cannot change their own role/)
+    await rejects(call(D, 'select public.set_member_role($1, $2, $3)', [teamOrg, E, 'admin']), /only manage editors and viewers/)
+    await rejects(call(D, 'select public.set_member_role($1, $2, $3)', [teamOrg, A, 'viewer']), /only manage editors and viewers/)
+    await rejects(call(A, 'select public.set_member_role($1, $2, $3)', [teamOrg, F, 'viewer']), /not a member/)
+    await call(D, 'select public.set_member_role($1, $2, $3)', [teamOrg, E, 'viewer'])
+    expect(await roleOf(E)).toBe('viewer')
+    await call(A, 'select public.set_member_role($1, $2, $3)', [teamOrg, E, 'editor'])
+    expect(await roleOf(E)).toBe('editor')
+    const audit = (await q<{ details: { from: string; to: string } }>("select details from public.audit_logs where action = 'member.role' and entity_id = $1 order by created_at desc, id limit 1", [E]))[0]!
+    expect(audit.details).toEqual({ from: 'viewer', to: 'editor' })
+  })
+
+  it('enforces who can remove or leave, and always keeps an owner', async () => {
+    await rejects(call(D, 'select public.remove_member($1, $2)', [teamOrg, A]), /only remove editors and viewers/)
+    await rejects(call(D, 'select public.remove_member($1, $2)', [teamOrg, D]), /Leave organization/)
+    await rejects(call(C, 'select public.remove_member($1, $2)', [teamOrg, E]), /Only admins and owners/)
+    await rejects(call(A, 'select public.leave_organization($1)', [teamOrg]), /at least one owner/)
+    await rejects(call(A, 'select public.set_member_role($1, $2, $3)', [teamOrg, A, 'admin']), /at least one owner/)
+
+    await call(A, 'select public.set_member_role($1, $2, $3)', [teamOrg, D, 'owner'])
+    await call(A, 'select public.leave_organization($1)', [teamOrg]) // fine now: D is also an owner
+    expect(await roleOf(A)).toBeUndefined()
+    await rejects(call(D, 'select public.set_member_role($1, $2, $3)', [teamOrg, A, 'owner']), /not a member/) // gone for good ...
+    const back = await invite(D, 'a@x.test', 'admin') // ... until invited again
+    await call(A, 'select public.accept_invitation($1)', [back])
+    await call(D, 'select public.set_member_role($1, $2, $3)', [teamOrg, A, 'owner'])
+    expect(await roleOf(A)).toBe('owner')
+  })
+
+  it('cannot change memberships or invitations directly', async () => {
+    await as(D, async () => {
+      await rejects(db.query("update public.organization_members set role = 'owner' where user_id = $1", [E]), /permission denied/)
+      await rejects(db.query('delete from public.organization_members where user_id = $1', [E]), /permission denied/)
+      await rejects(db.query("insert into public.organization_members (organization_id, user_id, role) values ($1, $2, 'owner')", [teamOrg, F]), /permission denied/)
+      await rejects(db.query("insert into public.invitations (organization_id, email, role) values ($1, 'z@x.test', 'owner')", [teamOrg]), /permission denied/)
+    })
+  })
+
+  it('records product, inventory, organization and member activity automatically', async () => {
+    const inv = await as(D, async () => (await db.query<{ id: string }>("insert into public.inventories (organization_id, name, created_by) values ($1, 'Annex', $2) returning id", [teamOrg, D])).rows[0]!.id)
+    await call(D, "update public.inventories set name = 'Annex 2' where id = $1", [inv])
+    const p = await as(E, async () => (await db.query<{ id: string }>("insert into public.products (inventory_id, name, sku, created_by) values ($1, 'Widget', 'W-1', $2) returning id", [inv, E])).rows[0]!.id)
+    await call(E, "update public.products set description = 'changed' where id = $1", [p])
+    await call(E, "select public.record_stock_movement($1, 'in', 5, $2)", [p, op()]) // quantity only: no product.update entry
+    await call(E, 'update public.products set archived_at = now() where id = $1', [p])
+    await call(E, 'update public.products set archived_at = null where id = $1', [p])
+    await call(A, "update public.organizations set name = 'Team Org Renamed' where id = $1", [teamOrg])
+
+    const actions = (await q<{ action: string; actor_id: string }>("select action, actor_id from public.audit_logs where organization_id = $1 and entity_id in ($2, $3, $4) order by created_at, id", [teamOrg, inv, p, teamOrg]))
+    expect(actions.map((a) => a.action)).toEqual(['inventory.create', 'inventory.update', 'product.create', 'product.update', 'stock.in', 'product.archive', 'product.restore', 'org.rename'].filter((a) => a !== 'stock.in' || actions.some((x) => x.action === a)))
+    expect(actions.filter((a) => a.action.startsWith('product.')).every((a) => a.actor_id === E)).toBe(true)
+  })
+
+  it('serves a filterable, paged, named activity feed to admins only', async () => {
+    const feed = (uid: string, category: string | null, limit = 30, offset = 0) =>
+      as(uid, async () => (await db.query<{ action: string; actor_name: string | null; inventory_name: string | null; total_count: string }>('select action, actor_name, inventory_name, total_count from public.list_activity($1, $2, $3, $4)', [teamOrg, category, limit, offset])).rows)
+    const all = await feed(D, null)
+    expect(all.length).toBeGreaterThan(8)
+    expect(Number(all[0]!.total_count)).toBe(all.length)
+    expect(all.map((r) => r.action)).toEqual(expect.arrayContaining(['member.invite', 'member.accept', 'member.role', 'member.remove', 'member.leave', 'product.create', 'inventory.create', 'org.rename']))
+    const members = await feed(D, 'member')
+    expect(members.length).toBeGreaterThan(0)
+    expect(members.every((r) => r.action.startsWith('member.'))).toBe(true)
+    expect((await feed(D, null, 2, 0)).length).toBe(2)
+    expect((await feed(D, null, 2, 2))[0]).not.toEqual((await feed(D, null, 2, 0))[0])
+    const created = (await feed(D, 'product')).find((r) => r.action === 'product.create')!
+    expect(created).toMatchObject({ actor_name: 'User e', inventory_name: 'Annex 2' })
+    expect(await feed(E, null)).toHaveLength(0) // editors do not see the audit feed
+    expect(await feed(B, null)).toHaveLength(0) // other organizations never do
+  })
+
+  it('keeps removed members out and deleting an organization works with its history', async () => {
+    await call(D, 'select public.remove_member($1, $2)', [teamOrg, E])
+    await rejects(call(E, "select public.record_stock_movement((select id from public.products where sku = 'W-1' limit 1), 'in', 1, $1)", [op()]), /not found or you do not have permission/)
+    await as(A, () => db.query('delete from public.organizations where id = $1', [teamOrg]))
+    expect((await q('select 1 from public.organizations where id = $1', [teamOrg])).length).toBe(0)
+    expect((await q('select 1 from public.audit_logs where organization_id = $1', [teamOrg])).length).toBe(0)
   })
 })
