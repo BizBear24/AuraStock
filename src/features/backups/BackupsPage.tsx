@@ -24,11 +24,18 @@ function formatSize(bytes: number): string {
 export interface BackupsPageProps {
   /** Resolves where a record's file lives; null when that store is not available right now (e.g. Drive not connected). */
   targetFor?: (record: BackupRecord) => BackupTarget | null
-  /** Extra panels (the Google Drive integration plugs in here). */
-  children?: ReactNode
+  /** Extra panels (the Google Drive integration plugs in here) with access to the page's restore preview. */
+  extras?: (page: BackupsPageApi) => ReactNode
 }
 
-export function BackupsPage({ targetFor = (r) => (r.destination === 'supabase' ? supabaseTarget : null), children }: BackupsPageProps) {
+export interface BackupsPageApi {
+  /** Validate backup JSON text and, if it is sound, open the restore preview. */
+  openRestore: (text: string) => void
+  notify: (tone: 'ok' | 'error', text: string) => void
+  refresh: () => Promise<unknown>
+}
+
+export function BackupsPage({ targetFor = (r) => (r.destination === 'supabase' ? supabaseTarget : null), extras }: BackupsPageProps) {
   const { organization, role } = useWorkspace()
   const { snapshot } = useOffline()
   const queryClient = useQueryClient()
@@ -252,7 +259,7 @@ export function BackupsPage({ targetFor = (r) => (r.destination === 'supabase' ?
             )}
           </Panel>
 
-          {children}
+          {extras?.({ openRestore, notify: (tone, text) => setNotice({ tone, text }), refresh })}
         </div>
       </div>
 
