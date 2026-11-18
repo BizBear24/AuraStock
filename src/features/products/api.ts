@@ -9,7 +9,7 @@ import * as remote from './remote'
 import type { Category, CategoryStock, InventorySummary, Product, ProductFilters, Tag } from './types'
 
 export * from './types'
-export { bulkSetCategory, deleteProduct, duplicateProduct, setArchived } from './remote'
+export { bulkSetCategory, deleteProduct, duplicateProduct, setArchived, setProductNfcTag } from './remote'
 
 export function listProducts(f: ProductFilters): Promise<{ rows: Product[]; total: number }> {
   return readThrough(

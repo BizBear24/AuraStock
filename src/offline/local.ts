@@ -106,6 +106,7 @@ export async function findProductByCodeLocal(inventoryId: string, code: string):
     rows.find((p) => p.barcode === code) ??
     rows.find((p) => p.qr_code === code) ??
     rows.find((p) => p.sku?.toLowerCase() === lower) ??
+    rows.find((p) => p.nfc_uid === code) ??
     null
   )
 }

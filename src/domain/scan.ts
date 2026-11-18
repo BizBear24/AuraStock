@@ -4,10 +4,29 @@ export type ScanSource = 'camera' | 'scanner' | 'manual'
 
 export type NormalizedScan = { ok: true; code: string } | { ok: false; reason: string }
 
-/** Validate and clean a raw scan: strip control characters and whitespace, bound the length. */
+/** Path of the scan screen. NFC tags carry `<app>/scan?code=<code>` so a phone without the app can open it. */
+export const SCAN_PATH = '/scan'
+
+export function scanUrl(origin: string, code: string): string {
+  return `${origin.replace(/\/+$/, '')}${SCAN_PATH}?code=${encodeURIComponent(code)}`
+}
+
+/** If the text is an AuraStock scan link (…/scan?code=X), return X; otherwise return the text unchanged. */
+export function unwrapScanUrl(text: string): string {
+  if (!/^https?:\/\//i.test(text)) return text
+  try {
+    const url = new URL(text)
+    const code = url.searchParams.get('code')
+    return url.pathname.replace(/\/+$/, '').endsWith(SCAN_PATH) && code ? code : text
+  } catch {
+    return text
+  }
+}
+
+/** Validate and clean a raw scan: strip control characters and whitespace, unwrap scan links, bound the length. */
 export function normalizeScan(raw: string): NormalizedScan {
   // eslint-disable-next-line no-control-regex
-  const code = raw.replace(/[\u0000-\u001f\u007f]/g, '').trim()
+  const code = unwrapScanUrl(raw.replace(/[\u0000-\u001f\u007f]/g, '').trim()).trim()
   if (code === '') return { ok: false, reason: 'Empty scan' }
   if (code.length > MAX_CODE_LENGTH) return { ok: false, reason: 'Scanned code is too long to be a product code' }
   return { ok: true, code }

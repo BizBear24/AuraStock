@@ -13,7 +13,7 @@ import {
 import type { ProductFormValues } from './schema'
 
 export const PRODUCT_COLUMNS =
-  'id, inventory_id, name, sku, barcode, qr_code, description, category_id, quantity, unit, min_stock, expires_on, archived_at, created_at, updated_at, stock_state, details_version, category:categories(name), product_tags(tags(id, name))'
+  'id, inventory_id, name, sku, barcode, qr_code, description, category_id, quantity, unit, min_stock, expires_on, archived_at, created_at, updated_at, stock_state, details_version, nfc_uid, category:categories(name), product_tags(tags(id, name))'
 
 export async function listProducts(f: ProductFilters): Promise<{ rows: Product[]; total: number }> {
   const hasTag = f.tagId !== ''
@@ -232,15 +232,16 @@ export async function fetchCategoryStock(inventoryId: string): Promise<CategoryS
  */
 export async function findProductByCode(inventoryId: string, code: string): Promise<Product | null> {
   const base = () => supabase.from('products').select(PRODUCT_COLUMNS).eq('inventory_id', inventoryId).limit(1)
-  const [byBarcode, byQr, bySku] = await Promise.all([
+  const [byBarcode, byQr, bySku, byNfc] = await Promise.all([
     base().eq('barcode', code).returns<Product[]>(),
     base().eq('qr_code', code).returns<Product[]>(),
     base().ilike('sku', escapeLike(code)).returns<Product[]>(),
+    base().eq('nfc_uid', code).returns<Product[]>(),
   ])
-  for (const r of [byBarcode, byQr, bySku]) {
+  for (const r of [byBarcode, byQr, bySku, byNfc]) {
     if (r.error) throw r.error
   }
-  return byBarcode.data?.[0] ?? byQr.data?.[0] ?? bySku.data?.[0] ?? null
+  return byBarcode.data?.[0] ?? byQr.data?.[0] ?? bySku.data?.[0] ?? byNfc.data?.[0] ?? null
 }
 
 /** One page of products ordered by updated_at, for filling the offline cache. */
@@ -259,4 +260,11 @@ export async function fetchProductsChunk(
     .returns<Product[]>()
   if (error) throw error
   return data
+}
+
+/** Link an NFC tag (by its serial number) to a product, or unlink it with null. */
+export async function setProductNfcTag(productId: string, serial: string | null): Promise<void> {
+  const { data, error } = await supabase.from('products').update({ nfc_uid: serial }).eq('id', productId).select('id')
+  if (error) throw error
+  if (data.length === 0) throw new Error('You do not have permission to change this product.')
 }

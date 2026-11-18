@@ -29,6 +29,8 @@ export interface Product {
   category: { name: string } | null
   product_tags: { tags: Tag | null }[]
   details_version: number
+  /** Serial number of a linked NFC tag. */
+  nfc_uid?: string | null
   /** Client-only: number of unsynced queued operations affecting this product. */
   pending_ops?: number
 }

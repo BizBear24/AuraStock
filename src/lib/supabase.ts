@@ -27,6 +27,7 @@ export function errorMessage(error: unknown, fallback = 'Something went wrong. P
     if (text.includes('products_sku_uq')) return 'Another product in this inventory already uses that SKU.'
     if (text.includes('products_barcode_uq')) return 'Another product in this inventory already uses that barcode.'
     if (text.includes('products_qr_uq')) return 'Another product in this inventory already uses that QR code.'
+    if (text.includes('products_nfc_uq')) return 'That NFC tag is already linked to another product in this inventory.'
     if (text.includes('categories_name_uq')) return 'That category already exists.'
     if (text.includes('tags_name_uq')) return 'That tag already exists.'
     return 'That value already exists.'

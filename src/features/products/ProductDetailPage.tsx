@@ -17,12 +17,15 @@ import { deleteProduct, duplicateProduct, getProduct, setArchived } from './api'
 import { listMovements } from '@/features/stock/api'
 import { MovementList } from '@/features/stock/MovementList'
 import { StockMovementDialog } from '@/features/stock/StockMovementDialog'
+import { ProductTagPanel } from '@/features/nfc/ProductTagPanel'
+import { useOffline } from '@/offline/OfflineProvider'
 import { ProductFormDialog } from './ProductFormDialog'
 
 export function ProductDetailPage() {
   const { id = '' } = useParams()
   const { user } = useAuth()
   const { role } = useWorkspace()
+  const { snapshot } = useOffline()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
@@ -156,6 +159,10 @@ export function ProductDetailPage() {
             <dd className="num">{new Date(p.updated_at).toLocaleString()}</dd>
           </dl>
         </Panel>
+      </div>
+
+      <div className="mt-4">
+        <ProductTagPanel product={p} canWrite={canWrite} online={snapshot.online} />
       </div>
 
       <Panel className="mt-4 overflow-hidden">

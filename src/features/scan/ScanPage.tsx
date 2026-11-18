@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Camera, CameraOff, Keyboard, Plus } from 'lucide-react'
+import { Camera, CameraOff, Keyboard, Nfc, Plus } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/field'
 import { PageHeader, Panel } from '@/components/ui/panel'
@@ -22,6 +22,7 @@ import { outstanding } from '@/domain/transfer'
 import { CameraScanner, type CameraScan } from './CameraScanner'
 import { scanFeedback } from './feedback'
 import { useHidScanner } from './useHidScanner'
+import { isNfcSupported, nfcErrorMessage, readNfcTag } from '@/features/nfc/nfc'
 
 interface ScanEvent {
   code: string
@@ -40,7 +41,15 @@ export function ScanPage() {
   const deduper = useRef(new ScanDeduper())
   const feedbackGiven = useRef<number | null>(null)
   const [cameraOn, setCameraOn] = useState(false)
-  const [scan, setScan] = useState<ScanEvent | null>(null)
+  const [params] = useSearchParams()
+  // Opened from an NFC tag or a label link (…/scan?code=X): look the code up straight away.
+  const [scan, setScan] = useState<ScanEvent | null>(() => {
+    const fromLink = params.get('code')
+    const r = fromLink ? normalizeScan(fromLink) : null
+    return r?.ok ? { code: r.code, isQr: false, source: 'manual', at: Date.now() } : null
+  })
+  const nfcAbort = useRef<AbortController | null>(null)
+  const [nfcWaiting, setNfcWaiting] = useState(false)
   const [invalid, setInvalid] = useState<string | null>(null)
   const [manual, setManual] = useState('')
   const [stockType, setStockType] = useState<MovementType | null>(null)
@@ -141,6 +150,36 @@ export function ScanPage() {
           ) : (
             <Button variant="primary" size="lg" className="w-full" onClick={() => { reset(); setCameraOn(true) }}>
               <Camera className="h-4 w-4" aria-hidden /> {scan ? 'Scan next with camera' : 'Start camera'}
+            </Button>
+          )}
+          {isNfcSupported() && (
+            <Button
+              className="w-full"
+              disabled={nfcWaiting}
+              onClick={() => {
+                nfcAbort.current?.abort()
+                const ctrl = new AbortController()
+                nfcAbort.current = ctrl
+                setNfcWaiting(true)
+                readNfcTag(ctrl.signal)
+                  .then((tag) => {
+                    const code = tag.codes[0] ?? tag.serial
+                    if (code) handleScan(code, 'scanner')
+                    else setInvalid('This tag has no product code and no serial number.')
+                  })
+                  .catch((e: unknown) => {
+                    const name = typeof e === 'object' && e !== null && 'name' in e ? String((e as { name: unknown }).name) : ''
+                    if (name !== 'AbortError') setInvalid(nfcErrorMessage(e))
+                  })
+                  .finally(() => setNfcWaiting(false))
+              }}
+            >
+              <Nfc className="h-4 w-4" aria-hidden /> {nfcWaiting ? 'Hold the tag to the phone…' : 'Tap an NFC tag'}
+            </Button>
+          )}
+          {nfcWaiting && (
+            <Button size="sm" variant="ghost" onClick={() => nfcAbort.current?.abort()}>
+              Cancel NFC
             </Button>
           )}
           <form onSubmit={onManualSubmit} className="flex gap-2">
