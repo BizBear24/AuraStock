@@ -1,6 +1,7 @@
 import { useMutation } from '@tanstack/react-query'
 import { FileText } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/field'
 import { PageHeader, Panel } from '@/components/ui/panel'
@@ -80,6 +81,15 @@ export function ReportsPage() {
     <>
       <PageHeader title="Reports" description={`${inventory.name} · PDF`} />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <ReportCard
+          title="Stock analysis"
+          description="What sells, what sits and what to reorder: usage, days of cover, slow and dead stock, with Excel and PDF export."
+          action={
+            <Button asChild variant="primary">
+              <Link to="/reports/analysis">Open analysis</Link>
+            </Button>
+          }
+        />
         <ReportCard
           title="Inventory report"
           description="Every active product with quantity, minimum, status and expiry, plus summary figures."

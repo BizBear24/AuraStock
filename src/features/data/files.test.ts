@@ -50,7 +50,8 @@ describe('CSV', () => {
   })
 })
 
-describe('XLSX', () => {
+// ExcelJS is large; its first load in a busy test worker can take longer than the default limit.
+describe('XLSX', { timeout: 120_000 }, () => {
   it('writes real numbers, real dates, a frozen header and a filter', async () => {
     const ExcelJS = (await import('exceljs')).default
     const blob = await toXlsx(productsTable([product({})], new Date(2026, 10, 14)), 'Products')

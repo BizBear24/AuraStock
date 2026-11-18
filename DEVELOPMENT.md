@@ -45,7 +45,16 @@ Typecheck, lint and test before every commit: `npm run typecheck && npm run lint
   - [ ] **Not verified live**: Realtime delivery (needs two signed-in browsers; the subscription logic is unit tested with a fake channel) and invitation acceptance with real accounts
   - [ ] Decision: access is organization-level. Every member sees every inventory of their organization. Per-inventory restrictions (`inventory_memberships`) are not implemented
   - [ ] Invitations are not emailed (no mail service is configured): tell the person to sign in or sign up with the invited address; the invitation then appears in the app
-- [ ] Phase 8 – Backups, Google Drive, NFC
+- [x] Phase 8 – Backups, Google Drive, NFC, advanced reports (migration 0010)
+  - [x] Cloud backups: manual and scheduled (daily/weekly) JSON snapshots in a private Supabase Storage bucket, SHA-256 checksum recorded, file read back and validated before it is marked verified; backup history, download, re-verify, delete; retention of 14 scheduled backups
+  - [x] Restore from a stored backup, a Drive file or an uploaded file: full validation first, then restored as NEW inventories with the complete stock ledger; never overwrites live data; refuses tampered or inconsistent files
+  - [x] Google Drive: Google's own consent window, `drive.file` scope (only files AuraStock creates), in-memory access token only, connection status, back up to Drive, list/download/restore Drive backups, disconnect (revokes access)
+  - [x] NFC (Chrome on Android over HTTPS): read tags, write a scan link + code to tags, link a tag's serial number to a product, look products up by tag; printable QR labels as the fallback everywhere else; `…/scan?code=` links open the product
+  - [x] Stock analysis report: usage, days of cover, fast/slow/no-movement classification, reorder suggestions, Excel and PDF export
+  - [x] Tested: 83 database tests (restore round trip, tamper rejection, permissions, schedule claim, integrations, NFC uniqueness, analysis figures) plus unit/component tests for validation, the backup service, the Drive client, Google sign-in, NFC parsing and the panels
+  - [ ] **Needs your setup**: Google Drive requires a Google OAuth client ID (`VITE_GOOGLE_CLIENT_ID`, see below). Without it the Drive panel says it is not set up
+  - [ ] **Not verified on real hardware/accounts**: Storage upload on the live project, Google consent with a real account, NFC on a real Android phone
+  - [ ] Limits: scheduled backups run when an admin or owner has the app open (no server-side job); a backup is one JSON file (fine for tens of thousands of movements; very large organizations should export in parts); transfers are kept in backups but not recreated on restore
 - [ ] Phase 9 – PWA and polish
 
 ## Demo data toggle
@@ -68,3 +77,18 @@ Move stock between two inventories ("locations") of one organization, scanning i
 Guarantees (tested on real SQL, migration 0008): all-or-nothing dispatch and receive; negative stock impossible; idempotent replays (same operation id never counts twice); over-receipt rejected; every change is a normal ledger movement (reference `TR-nnnnn`, linked by `transfer_id`) so history, alerts and audit entries apply; sent equals received plus recorded shortage; expired stock can leave (disposal) but cannot be received; permissions: editor or above, both inventories in the same organization; no direct table writes.
 
 Limits: online only (no offline queue yet); one product once per transfer; at most 200 lines; no per-unit serial tracking; an existing destination product keeps its own expiration date.
+
+## Google Drive setup (optional)
+
+1. In Google Cloud Console create (or pick) a project, then **APIs & Services → Library → Google Drive API → Enable**.
+2. **OAuth consent screen**: user type External, app name "AuraStock", add the scope `https://www.googleapis.com/auth/drive.file`, and add yourself as a test user while the app is in testing.
+3. **Credentials → Create credentials → OAuth client ID → Web application**. Authorised JavaScript origins: your site (e.g. `https://aurastock-rosy.vercel.app`) and `http://localhost:5173` for development. No redirect URI is needed (token model).
+4. Copy the client ID into `VITE_GOOGLE_CLIENT_ID` (`.env` locally; Vercel → Project → Settings → Environment Variables for production) and redeploy.
+
+The client ID is public by design. No client secret is used, and no Google tokens are stored by AuraStock: the access token lives in the browser tab's memory for about an hour.
+
+## Backups
+
+- Backups → **Back up now** stores a verified copy in the private `backups` Storage bucket (`<organization id>/<backup id>.json`). Only admins and owners of that organization can read or write its folder.
+- **Schedule**: daily or weekly. Supabase's free plan has no server-side job runner for uploads, so a scheduled backup is taken by the app of whichever admin or owner has AuraStock open when it is due; `claim_auto_backup()` ensures it happens once per period.
+- **Restore** always creates new inventories ("… (restored YYYY-MM-DD)"), so it can be tried safely.

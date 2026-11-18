@@ -80,3 +80,13 @@ Manual two-session check on a real database: open two SQL sessions as an editor,
 - Membership is changed **only** through `invite_member`, `accept_invitation`, `decline_invitation`, `revoke_invitation`, `set_member_role`, `remove_member` and `leave_organization`; direct writes to `organization_members` and `invitations` are revoked. Rules: owners can do anything; admins manage only editors and viewers and cannot change themselves; an organization always keeps at least one owner.
 - Activity log: triggers record product create/update/archive/restore/delete, inventory changes and organization renames in `audit_logs`; stock, transfer, import and member functions record their own entries. `list_activity` serves a filterable, paged, named feed to admins and owners.
 - Realtime: the migration adds `products`, `stock_movements`, `notifications`, `transfers`, `organization_members`, `invitations` and `inventories` to the `supabase_realtime` publication (skipped where it does not exist). Row-level security decides which rows a subscriber receives.
+
+## Phase 8 (`0010_backups_integrations.sql`)
+
+- `backup_records`: one row per stored backup (client-chosen id, destination `supabase` or `google_drive`, path or Drive file id, size, SHA-256, format version, counts, verification result). Admin read only; written by `register_backup`, `mark_backup_verified`, `delete_backup_record`.
+- `export_org_backup(org)`: the organization as one JSON document (format `aurastock-backup`, version 1). `restore_backup(org, doc, inventory_ids)`: validates and restores into new inventories in one transaction, replaying each product's ledger with original timestamps (equal timestamps are ordered by their balance chain) and refusing any product whose history does not add up.
+- `organizations.backup_interval_days` (null, 1, 7) with `set_backup_schedule`; `claim_auto_backup` hands out a due scheduled backup once (15-minute claim).
+- Storage: private bucket `backups` (50 MB per file, JSON only) with policies restricting each `<organization id>/` folder to that organization's admins and owners.
+- `integration_connections`: which Google account and folder an organization connected; no tokens or secrets. `save_integration`, `remove_integration`.
+- `products.nfc_uid`: serial number of a linked NFC tag, unique per inventory; product lookup also matches it.
+- `stock_analysis(inventory, days)`: per-product usage, receipts, movement count and last movement for the analysis report.
