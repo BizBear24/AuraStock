@@ -72,7 +72,7 @@ export function isLastOwner(members: MemberLike[], userId: string): boolean {
 
 // ------------------------------------------------------------------- activity
 
-export type ActivityCategory = 'stock' | 'product' | 'inventory' | 'transfer' | 'member' | 'import' | 'org' | 'demo'
+export type ActivityCategory = 'stock' | 'product' | 'inventory' | 'transfer' | 'member' | 'import' | 'backup' | 'integration' | 'org' | 'demo'
 
 export const ACTIVITY_CATEGORIES: { id: ActivityCategory; label: string }[] = [
   { id: 'stock', label: 'Stock' },
@@ -81,6 +81,8 @@ export const ACTIVITY_CATEGORIES: { id: ActivityCategory; label: string }[] = [
   { id: 'transfer', label: 'Transfers' },
   { id: 'member', label: 'Team' },
   { id: 'import', label: 'Imports' },
+  { id: 'backup', label: 'Backups' },
+  { id: 'integration', label: 'Integrations' },
   { id: 'org', label: 'Organization' },
   { id: 'demo', label: 'Demo data' },
 ]
@@ -159,6 +161,22 @@ export function describeActivity(action: string, details: Details = {}, inventor
     }
     case 'org.rename':
       return `Renamed the organization from ${str(details.from) ?? '?'} to ${str(details.to) ?? '?'}`
+    case 'backup.create':
+      return `Created a ${str(details.kind) === 'automatic' ? 'scheduled ' : ''}backup${str(details.destination) === 'google_drive' ? ' in Google Drive' : ''}`
+    case 'backup.delete':
+      return 'Deleted a backup'
+    case 'backup.restore': {
+      const restored = Array.isArray(details.inventories) ? details.inventories.length : 0
+      return `Restored ${restored} inventor${restored === 1 ? 'y' : 'ies'} from a backup (${num(details.products) ?? 0} products)`
+    }
+    case 'backup.schedule': {
+      const days = num(details.days)
+      return days === 1 ? 'Turned on daily backups' : days === 7 ? 'Turned on weekly backups' : 'Turned off scheduled backups'
+    }
+    case 'integration.connect':
+      return `Connected ${str(details.provider) === 'google_drive' ? 'Google Drive' : 'an integration'}${str(details.account) ? ` (${str(details.account)})` : ''}`
+    case 'integration.disconnect':
+      return `Disconnected ${str(details.provider) === 'google_drive' ? 'Google Drive' : 'an integration'}`
     case 'demo.seed':
       return `Loaded demo data${where}`
     default:

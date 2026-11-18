@@ -28,6 +28,7 @@ const TransferDetailPage = lazy(() => import('@/features/transfers/TransferDetai
 const TeamPage = lazy(() => import('@/features/team/TeamPage').then((m) => ({ default: m.TeamPage })))
 const ActivityPage = lazy(() => import('@/features/team/ActivityPage').then((m) => ({ default: m.ActivityPage })))
 const SettingsPage = lazy(() => import('@/features/team/SettingsPage').then((m) => ({ default: m.SettingsPage })))
+const BackupsRoute = lazy(() => import('@/features/backups/BackupsRoute').then((m) => ({ default: m.BackupsRoute })))
 const ProfilePage = lazy(() => import('@/features/auth/ProfilePage').then((m) => ({ default: m.ProfilePage })))
 
 const queryClient = new QueryClient({
@@ -90,6 +91,7 @@ export function App() {
                   <Route path="team" element={<TeamPage />} />
                   <Route path="activity" element={<ActivityPage />} />
                   <Route path="settings" element={<SettingsPage />} />
+                  <Route path="backups" element={<BackupsRoute />} />
                   <Route path="movements" element={<MovementsPage />} />
                   <Route path="inventories" element={<InventoriesPage />} />
                   <Route path="profile" element={<ProfilePage />} />

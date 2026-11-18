@@ -89,11 +89,15 @@ describe('describeActivity', () => {
     expect(describeActivity('member.role', { from: 'viewer', to: 'editor' })).toBe("Changed a member's role from viewer to editor")
     expect(describeActivity('member.leave')).toBe('Left the organization')
     expect(describeActivity('org.rename', { from: 'A', to: 'B' })).toBe('Renamed the organization from A to B')
+    expect(describeActivity('backup.create', { kind: 'automatic', destination: 'supabase' })).toBe('Created a scheduled backup')
+    expect(describeActivity('backup.restore', { inventories: [{}, {}], products: 40 })).toBe('Restored 2 inventories from a backup (40 products)')
+    expect(describeActivity('backup.schedule', { days: 7 })).toBe('Turned on weekly backups')
+    expect(describeActivity('integration.connect', { provider: 'google_drive', account: 'me@gmail.com' })).toBe('Connected Google Drive (me@gmail.com)')
   })
   it('falls back to the raw action for unknown events', () => {
     expect(describeActivity('something.new')).toBe('something.new')
   })
   it('has a category for every action prefix used', () => {
-    expect(ACTIVITY_CATEGORIES.map((c) => c.id)).toEqual(['stock', 'product', 'inventory', 'transfer', 'member', 'import', 'org', 'demo'])
+    expect(ACTIVITY_CATEGORIES.map((c) => c.id)).toEqual(['stock', 'product', 'inventory', 'transfer', 'member', 'import', 'backup', 'integration', 'org', 'demo'])
   })
 })

@@ -1,4 +1,4 @@
-import { Bell, Calculator, CloudOff, History, Settings, Truck, Users, FileSpreadsheet, FileText, User, Warehouse } from 'lucide-react'
+import { Bell, Calculator, CloudOff, DatabaseBackup, History, Settings, Truck, Users, FileSpreadsheet, FileText, User, Warehouse } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { Link } from 'react-router-dom'
 import { PageHeader, Panel } from '@/components/ui/panel'
@@ -20,6 +20,7 @@ const ITEMS: Item[] = [
   { to: '/calculator', label: 'Calculator', description: 'Quick arithmetic for counts', icon: Calculator },
   { to: '/sync', label: 'Sync', description: 'Changes waiting to be sent to the server', icon: CloudOff },
   { to: '/inventories', label: 'Inventories', description: 'Create and switch inventories', icon: Warehouse },
+  { to: '/backups', label: 'Backups', description: 'Verified backups, schedule, restore, Google Drive', icon: DatabaseBackup },
   { to: '/settings', label: 'Settings', description: 'Rename or delete the organization', icon: Settings },
   { to: '/profile', label: 'Profile', description: 'Your account and sign out', icon: User },
 ]

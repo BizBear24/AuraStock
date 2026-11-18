@@ -859,3 +859,208 @@ describe('team collaboration', () => {
     expect((await q('select 1 from public.audit_logs where organization_id = $1', [teamOrg])).length).toBe(0)
   })
 })
+
+describe('backups and restore', () => {
+  type Doc = Record<string, unknown> & {
+    inventories: { id: string; name: string; is_demo: boolean }[]
+    products: { id: string; inventory_id: string; sku: string | null; quantity: string | number; name: string; archived_at: string | null }[]
+    stock_movements: { id: string; product_id: string; created_at: string; delta: string | number; quantity_before: string | number; quantity_after: string | number }[]
+  }
+  const q = async <T extends Record<string, unknown>>(sql: string, params: unknown[] = []) => (await db.query<T>(sql, params)).rows
+  const exportDoc = (uid: string) => as(uid, async () => (await db.query<{ d: Doc }>('select public.export_org_backup($1) as d', [orgA])).rows[0]!.d)
+  const restore = (uid: string, doc: unknown, ids: string[] | null = null) =>
+    as(uid, async () => (await db.query<{ r: { inventories: { old_id: string; new_id: string; name: string }[]; products: number; movements: number } }>('select public.restore_backup($1, $2::jsonb, $3::uuid[]) as r', [orgA, JSON.stringify(doc), ids])).rows[0]!.r)
+  const inventoryCount = async () => Number((await q<{ n: string }>('select count(*) as n from public.inventories where organization_id = $1', [orgA]))[0]!.n)
+  let doc: Doc
+  let demoInv: { id: string; name: string }
+
+  beforeAll(async () => {
+    doc = await exportDoc(A)
+    demoInv = doc.inventories.find((i) => i.is_demo)!
+  })
+
+  it('exports only for admins and owners', async () => {
+    await rejects(exportDoc(C), /Only admins and owners/) // viewer
+    await rejects(as(B, () => db.query('select public.export_org_backup($1)', [orgA])), /Only admins and owners/)
+  })
+
+  it('exports every part of the organization in a versioned document', async () => {
+    expect(doc).toMatchObject({ format: 'aurastock-backup', version: 1 })
+    for (const key of ['inventories', 'categories', 'tags', 'products', 'product_tags', 'stock_movements', 'transfers', 'transfer_lines']) {
+      expect(Array.isArray(doc[key])).toBe(true)
+    }
+    expect(doc.products.length).toBeGreaterThan(40)
+    expect(doc.stock_movements.length).toBeGreaterThan(100)
+    expect('stock_state' in doc.products[0]!).toBe(false)
+    expect('nfc_uid' in doc.products[0]!).toBe(true)
+  })
+
+  it('restores an inventory as a new copy with identical stock and history', async () => {
+    const before = await inventoryCount()
+    const r = await restore(A, doc, [demoInv.id])
+    expect(await inventoryCount()).toBe(before + 1)
+    const copy = r.inventories[0]!
+    expect(copy.name).toMatch(/^Demo Store \(sample data\) \(restored \d{4}-\d{2}-\d{2}\)$/)
+    const orig = doc.products.filter((p) => p.inventory_id === demoInv.id)
+    expect(r.products).toBe(orig.length)
+    const restored = await q<{ sku: string; quantity: string; archived_at: string | null; is_demo: boolean }>(
+      'select p.sku, p.quantity, p.archived_at, i.is_demo from public.products p join public.inventories i on i.id = p.inventory_id where p.inventory_id = $1',
+      [copy.new_id],
+    )
+    expect(restored).toHaveLength(orig.length)
+    for (const p of orig) {
+      const twin = restored.find((x) => x.sku === p.sku)!
+      expect(Number(twin.quantity)).toBe(Number(p.quantity))
+      expect(twin.archived_at === null).toBe(p.archived_at === null)
+    }
+    expect(restored.every((x) => x.is_demo === false)).toBe(true) // a restored copy is real data
+    const moves = doc.stock_movements.filter((m) => orig.some((p) => p.id === m.product_id)).length
+    expect(r.movements).toBe(moves)
+    const mismatch = await q<{ n: string }>(
+      'select count(*) as n from public.products p where p.inventory_id = $1 and p.quantity <> (select coalesce(sum(delta), 0) from public.stock_movements m where m.product_id = p.id)',
+      [copy.new_id],
+    )
+    expect(Number(mismatch[0]!.n)).toBe(0)
+    const tagLinks = await q<{ n: string }>('select count(*) as n from public.product_tags where inventory_id = $1', [copy.new_id])
+    expect(Number(tagLinks[0]!.n)).toBeGreaterThan(20)
+    const stockAlerts = await q<{ n: string }>("select count(*) as n from public.notifications where inventory_id = $1 and kind in ('low_stock', 'out_of_stock')", [copy.new_id])
+    expect(Number(stockAlerts[0]!.n)).toBe(0) // restoring does not announce every low product again
+    // Restoring the same inventory again gets a distinct name.
+    const again = await restore(A, doc, [demoInv.id])
+    expect(again.inventories[0]!.name).toBe(`${copy.name} 2`)
+  })
+
+  it('restores everything when no inventory is chosen', async () => {
+    const before = await inventoryCount()
+    const r = await restore(A, doc)
+    expect(r.inventories).toHaveLength(doc.inventories.length)
+    expect(await inventoryCount()).toBe(before + doc.inventories.length)
+  })
+
+  it('handles movements that share a timestamp', async () => {
+    const tiny = structuredClone(doc)
+    const p = tiny.products.find((x) => x.inventory_id === demoInv.id && Number(x.quantity) > 0 && tiny.stock_movements.filter((m) => m.product_id === x.id).length >= 3)!
+    const own = tiny.stock_movements.filter((m) => m.product_id === p.id)
+    for (const m of own) m.created_at = '2026-01-01T00:00:00Z'
+    tiny.stock_movements = [...tiny.stock_movements.filter((m) => m.product_id !== p.id), ...own.reverse()]
+    const r = await restore(A, tiny, [demoInv.id])
+    expect(r.movements).toBeGreaterThan(0)
+  })
+
+  it('refuses tampered or foreign files and restores nothing', async () => {
+    const before = await inventoryCount()
+    const badDelta = structuredClone(doc)
+    const m = badDelta.stock_movements.find((x) => badDelta.products.some((p) => p.id === x.product_id && p.inventory_id === demoInv.id))!
+    m.delta = Number(m.delta) + 1
+    await rejects(restore(A, badDelta, [demoInv.id]), /stock history is inconsistent/)
+    const badQty = structuredClone(doc)
+    const prod = badQty.products.find((p) => p.inventory_id === demoInv.id)!
+    prod.quantity = Number(prod.quantity) + 5
+    await rejects(restore(A, badQty, [demoInv.id]), /has quantity .* but its history adds up to/)
+    await rejects(restore(A, { ...doc, format: 'something-else' }), /not an AuraStock backup/)
+    await rejects(restore(A, { ...doc, version: 2 }), /Unsupported backup version 2/)
+    await rejects(restore(A, doc, ['00000000-0000-0000-0000-000000000123']), /Nothing to restore/)
+    await rejects(restore(C, doc), /Only admins and owners/)
+    expect(await inventoryCount()).toBe(before)
+  })
+
+  describe('backup records and schedule', () => {
+    const id1 = '11111111-1111-4111-8111-111111111111'
+    const sha = 'a'.repeat(64)
+    const register = (uid: string, id: string, kind: string, path: string | null, extra: unknown[] = []) =>
+      as(uid, () =>
+        db.query('select public.register_backup($1, $2, $3, $4, $5, $6, $7, $8, 1, $9::jsonb)', [orgA, id, kind, extra[0] ?? 'supabase', path, extra[1] ?? null, 1234, sha, '{"products": 3}']),
+      )
+
+    it('registers backups with a checked path and keeps them private to admins', async () => {
+      await rejects(register(A, id1, 'manual', 'someone-else/x.json'), /Unexpected storage path/)
+      await rejects(register(C, id1, 'manual', `${orgA}/${id1}.json`), /Only admins and owners/)
+      await register(A, id1, 'manual', `${orgA}/${id1}.json`)
+      await register(A, '22222222-2222-4222-8222-222222222222', 'manual', null, ['google_drive', 'drive-file-1'])
+      await as(A, async () => expect((await db.query('select 1 from public.backup_records')).rows.length).toBe(2))
+      await as(C, async () => expect((await db.query('select 1 from public.backup_records')).rows).toHaveLength(0))
+      await as(B, async () => expect((await db.query('select 1 from public.backup_records')).rows).toHaveLength(0))
+      await as(A, async () => {
+        await rejects(db.query("update public.backup_records set verified_at = now()"), /permission denied/)
+      })
+    })
+
+    it('records verification results', async () => {
+      await as(A, () => db.query("select public.mark_backup_verified($1, false, 'Checksum mismatch')", [id1]))
+      expect((await q<{ verify_error: string; verified_at: string | null }>('select verify_error, verified_at from public.backup_records where id = $1', [id1]))[0]).toEqual({ verify_error: 'Checksum mismatch', verified_at: null })
+      await as(A, () => db.query('select public.mark_backup_verified($1, true)', [id1]))
+      const row = (await q<{ verify_error: string | null; verified_at: string | null }>('select verify_error, verified_at from public.backup_records where id = $1', [id1]))[0]!
+      expect(row.verify_error).toBeNull()
+      expect(row.verified_at).not.toBeNull()
+      await rejects(as(C, () => db.query('select public.mark_backup_verified($1, true)', [id1])), /permission/)
+    })
+
+    it('hands out a scheduled backup exactly once per period', async () => {
+      const claim = (uid: string) => as(uid, async () => (await db.query<{ c: boolean }>('select public.claim_auto_backup($1) as c', [orgA])).rows[0]!.c)
+      expect(await claim(A)).toBe(false) // schedule is off
+      await rejects(as(A, () => db.query('select public.set_backup_schedule($1, 3)', [orgA])), /daily or weekly/)
+      await rejects(as(C, () => db.query('select public.set_backup_schedule($1, 1)', [orgA])), /Only admins and owners/)
+      await as(A, () => db.query('select public.set_backup_schedule($1, 1)', [orgA]))
+      expect(await claim(C)).toBe(false) // viewers never run backups
+      expect(await claim(A)).toBe(true)
+      expect(await claim(A)).toBe(false) // already claimed by another tab
+      await register(A, '33333333-3333-4333-8333-333333333333', 'automatic', `${orgA}/33333333-3333-4333-8333-333333333333.json`)
+      await db.query("update public.organizations set auto_backup_claimed_at = now() - interval '1 hour' where id = $1", [orgA])
+      expect(await claim(A)).toBe(false) // a fresh automatic backup exists
+      await db.query("update public.backup_records set created_at = now() - interval '2 days' where kind = 'automatic'")
+      expect(await claim(A)).toBe(true) // due again
+    })
+
+    it('deletes records with an audit entry', async () => {
+      await as(A, () => db.query('select public.delete_backup_record($1)', [id1]))
+      expect(await q('select 1 from public.backup_records where id = $1', [id1])).toHaveLength(0)
+      const audit = await q<{ action: string }>("select action from public.audit_logs where organization_id = $1 and action like 'backup.%'", [orgA])
+      expect(new Set(audit.map((a) => a.action))).toEqual(new Set(['backup.create', 'backup.delete', 'backup.restore', 'backup.schedule']))
+    })
+  })
+})
+
+describe('integrations, NFC and stock analysis', () => {
+  const q = async <T extends Record<string, unknown>>(sql: string, params: unknown[] = []) => (await db.query<T>(sql, params)).rows
+
+  it('stores only connection metadata, admins only', async () => {
+    const cols = (await q<{ column_name: string }>("select column_name from information_schema.columns where table_name = 'integration_connections'")).map((c) => c.column_name)
+    expect(cols.some((c) => /token|secret|password/i.test(c))).toBe(false)
+    await rejects(as(C, () => db.query("select public.save_integration($1, 'google_drive', 'x@gmail.com', 'folder')", [orgA])), /Only admins and owners/)
+    await as(A, () => db.query("select public.save_integration($1, 'google_drive', 'me@gmail.com', 'folder-1')", [orgA]))
+    await as(A, () => db.query("select public.save_integration($1, 'google_drive', 'me@gmail.com', 'folder-2')", [orgA])) // reconnect updates
+    await as(A, async () => {
+      const rows = (await db.query<{ folder_id: string }>('select folder_id from public.integration_connections')).rows
+      expect(rows).toEqual([{ folder_id: 'folder-2' }])
+    })
+    await as(C, async () => expect((await db.query('select 1 from public.integration_connections')).rows).toHaveLength(0))
+    await rejects(as(A, () => db.query("insert into public.integration_connections (organization_id, provider) values ($1, 'google_drive')", [orgA])), /permission denied/)
+    await rejects(as(A, () => db.query("select public.save_integration($1, 'dropbox', null, null)", [orgA])), /check constraint/) // unknown providers are refused
+    await as(A, () => db.query("select public.remove_integration($1, 'google_drive')", [orgA]))
+    expect(await q('select 1 from public.integration_connections where organization_id = $1', [orgA])).toHaveLength(0)
+  })
+
+  it('links an NFC tag to at most one product per inventory', async () => {
+    const [p1, p2] = (await q<{ id: string }>('select id from public.products where inventory_id = $1 order by name limit 2', [invA])).map((r) => r.id)
+    await as(A, () => db.query("update public.products set nfc_uid = '04:a2:3f:1c' where id = $1", [p1]))
+    await rejects(as(A, () => db.query("update public.products set nfc_uid = '04:a2:3f:1c' where id = $1", [p2])), /products_nfc_uq/)
+    await rejects(as(A, () => db.query("update public.products set nfc_uid = 'x' where id = $1", [p2])), /check constraint/)
+    await as(C, async () => {
+      const r = await db.query("update public.products set nfc_uid = '04:ff:ff:ff' where id = $1 returning id", [p2])
+      expect(r.rows).toHaveLength(0) // viewers cannot change products
+    })
+  })
+
+  it('summarises recent usage per product', async () => {
+    const demo = (await q<{ id: string }>('select id from public.inventories where organization_id = $1 and is_demo', [orgA]))[0]!.id
+    const rows = await as(A, async () => (await db.query<{ product_id: string; units_out: string; units_in: string; movements: string; quantity: string }>('select * from public.stock_analysis($1, 30)', [demo])).rows)
+    const active = await q<{ n: string }>('select count(*) as n from public.products where inventory_id = $1 and archived_at is null', [demo])
+    expect(rows).toHaveLength(Number(active[0]!.n))
+    for (const r of rows.slice(0, 10)) {
+      const truth = (await q<{ outs: string }>("select coalesce(sum(-delta), 0) as outs from public.stock_movements where product_id = $1 and movement_type = 'out' and created_at >= now() - interval '30 days'", [r.product_id]))[0]!
+      expect(Number(r.units_out)).toBe(Number(truth.outs))
+    }
+    expect(rows.some((r) => Number(r.units_out) > 0)).toBe(true)
+    await as(B, async () => expect((await db.query('select * from public.stock_analysis($1, 30)', [demo])).rows).toHaveLength(0))
+  })
+})

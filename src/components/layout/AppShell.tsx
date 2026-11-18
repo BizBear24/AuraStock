@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Bell, Boxes, History, Settings, Truck, Users, Calculator, FileSpreadsheet, FileText, MoreHorizontal, LayoutDashboard, LogOut, Package, ScanLine, User, Warehouse } from 'lucide-react'
+import { ArrowLeftRight, Bell, Boxes, DatabaseBackup, History, Settings, Truck, Users, Calculator, FileSpreadsheet, FileText, MoreHorizontal, LayoutDashboard, LogOut, Package, ScanLine, User, Warehouse } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { ConfirmDialog } from '@/components/ui/dialog'
@@ -6,6 +6,7 @@ import { useOffline } from '@/offline/OfflineProvider'
 import { SyncBadge, SyncBanner } from '@/offline/SyncStatus'
 import { useRealtime, type LiveStatus } from '@/features/realtime/useRealtime'
 import { InvitationsList } from '@/features/team/InvitationsList'
+import { useAutoBackup } from '@/features/backups/useAutoBackup'
 import { useInventoryCache } from '@/offline/useInventoryCache'
 import { cn } from '@/lib/cn'
 import { useAuth } from '@/features/auth/AuthProvider'
@@ -24,6 +25,7 @@ const NAV = [
   { to: '/calculator', label: 'Calculator', icon: Calculator, end: false },
   { to: '/team', label: 'Team', icon: Users, end: false },
   { to: '/activity', label: 'Activity', icon: History, end: false },
+  { to: '/backups', label: 'Backups', icon: DatabaseBackup, end: false },
   { to: '/settings', label: 'Settings', icon: Settings, end: false },
   { to: '/inventories', label: 'Inventories', icon: Warehouse, end: false },
   { to: '/profile', label: 'Profile', icon: User, end: false },
@@ -79,12 +81,13 @@ function WorkspaceSwitcher() {
 
 export function AppShell() {
   const { user, signOut } = useAuth()
-  const { organization, inventory, setOrganizationId } = useWorkspace()
+  const { organization, inventory, role, setOrganizationId } = useWorkspace()
   const { snapshot } = useOffline()
   const [confirmSignOut, setConfirmSignOut] = useState(false)
   const unsynced = snapshot.pending + snapshot.failed + snapshot.conflicts
   useInventoryCache(inventory?.id)
   const live = useRealtime(organization.organizationId, inventory?.id)
+  useAutoBackup(organization.organizationId, organization.organizationName, role, snapshot.online)
   return (
     <div className="flex h-full">
       <aside className="hidden w-56 shrink-0 flex-col border-r border-line bg-bg-2 md:flex">
