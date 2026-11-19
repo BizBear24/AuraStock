@@ -1,7 +1,7 @@
 # AuraStock
 
 Offline-first inventory management for retail stores, warehouses, restaurants and small businesses.
-React 19 + TypeScript + Vite + Tailwind 4 on the front end; Supabase (PostgreSQL, Auth, RLS, Realtime, Storage) on the back end.
+React 19 + TypeScript + Vite and Tailwind 4 on the front end; Supabase (PostgreSQL, Auth, RLS, Realtime, Storage) on the back end
 
 ## Quick start
 
