@@ -47,7 +47,8 @@ export function ProductsPage() {
   const [searchText, setSearchText] = useState('')
   const debouncedSearch = useDebouncedValue(searchText)
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [formOpen, setFormOpen] = useState(false)
+  // Opened from the dashboard's "Add product" (?new=1).
+  const [formOpen, setFormOpen] = useState(() => params.get('new') === '1' && canWrite)
   const [categoryDialog, setCategoryDialog] = useState(false)
   const [bulkCategory, setBulkCategory] = useState('')
 

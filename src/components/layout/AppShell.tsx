@@ -1,6 +1,7 @@
-import { ArrowLeftRight, Bell, Boxes, DatabaseBackup, History, Settings, Truck, Users, Calculator, FileSpreadsheet, FileText, MoreHorizontal, LayoutDashboard, LogOut, Package, ScanLine, User, Warehouse } from 'lucide-react'
-import { useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { ArrowLeftRight, Bell, Boxes, Calculator, ChevronDown, DatabaseBackup, FileSpreadsheet, FileText, History, LayoutDashboard, LogOut, MoreHorizontal, Package, ScanLine, Settings, Truck, User, Users, Warehouse } from 'lucide-react'
+import { useState, type ComponentType } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { can } from '@/domain/permissions'
 import { ConfirmDialog } from '@/components/ui/dialog'
 import { useOffline } from '@/offline/OfflineProvider'
 import { SyncBadge, SyncBanner } from '@/offline/SyncStatus'
@@ -13,26 +14,128 @@ import { useAuth } from '@/features/auth/AuthProvider'
 import { NotificationBell } from '@/features/notifications/NotificationBell'
 import { useWorkspace } from '@/features/organizations/WorkspaceProvider'
 
-const NAV = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/products', label: 'Products', icon: Package, end: false },
-  { to: '/scan', label: 'Scan', icon: ScanLine, end: false },
-  { to: '/transfers', label: 'Transfers', icon: Truck, end: false },
-  { to: '/movements', label: 'Movements', icon: ArrowLeftRight, end: false },
-  { to: '/notifications', label: 'Alerts', icon: Bell, end: false },
-  { to: '/data', label: 'Import & export', icon: FileSpreadsheet, end: false },
-  { to: '/reports', label: 'Reports', icon: FileText, end: false },
-  { to: '/calculator', label: 'Calculator', icon: Calculator, end: false },
-  { to: '/team', label: 'Team', icon: Users, end: false },
-  { to: '/activity', label: 'Activity', icon: History, end: false },
-  { to: '/backups', label: 'Backups', icon: DatabaseBackup, end: false },
-  { to: '/settings', label: 'Settings', icon: Settings, end: false },
-  { to: '/inventories', label: 'Inventories', icon: Warehouse, end: false },
-  { to: '/profile', label: 'Profile', icon: User, end: false },
-] as const
+interface NavItem {
+  to: string
+  label: string
+  icon: ComponentType<{ className?: string }>
+  end?: boolean
+  /** Only shown to members who can use it. */
+  adminOnly?: boolean
+}
+
+/**
+ * Navigation is grouped so the everyday work (products, scanning, stock) is always one tap away, and the
+ * occasional tools and administration stay out of the way until needed.
+ */
+export const NAV_GROUPS: { id: 'core' | 'tools' | 'admin'; label: string; items: NavItem[] }[] = [
+  {
+    id: 'core',
+    label: 'Everyday',
+    items: [
+      { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+      { to: '/products', label: 'Products', icon: Package },
+      { to: '/scan', label: 'Scan', icon: ScanLine },
+      { to: '/movements', label: 'Movements', icon: ArrowLeftRight },
+      { to: '/transfers', label: 'Transfers', icon: Truck },
+    ],
+  },
+  {
+    id: 'tools',
+    label: 'Tools',
+    items: [
+      { to: '/notifications', label: 'Alerts', icon: Bell },
+      { to: '/reports', label: 'Reports', icon: FileText },
+      { to: '/data', label: 'Import & export', icon: FileSpreadsheet },
+      { to: '/calculator', label: 'Calculator', icon: Calculator },
+    ],
+  },
+  {
+    id: 'admin',
+    label: 'Admin',
+    items: [
+      { to: '/inventories', label: 'Inventories', icon: Warehouse },
+      { to: '/team', label: 'Team', icon: Users },
+      { to: '/activity', label: 'Activity', icon: History, adminOnly: true },
+      { to: '/backups', label: 'Backups', icon: DatabaseBackup, adminOnly: true },
+      { to: '/settings', label: 'Settings', icon: Settings },
+    ],
+  },
+]
+
+const NAV: NavItem[] = NAV_GROUPS.flatMap((g) => g.items)
 
 /** Sections with a place in the mobile bottom bar; everything else lives under More. */
 const MOBILE_PRIMARY: string[] = ['/', '/products', '/scan', '/movements']
+
+const ADMIN_OPEN_KEY = 'aurastock.nav.admin'
+
+function readAdminOpen(): boolean {
+  try {
+    return localStorage.getItem(ADMIN_OPEN_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function SidebarLink({ item }: { item: NavItem }) {
+  const Icon = item.icon
+  return (
+    <NavLink
+      to={item.to}
+      end={item.end}
+      className={({ isActive }) =>
+        cn('flex h-9 items-center gap-2 rounded-md px-3 text-sm', isActive ? 'bg-surface font-semibold text-fg' : 'text-fg-2 hover:bg-surface hover:text-fg')
+      }
+    >
+      <Icon className="h-4 w-4" aria-hidden /> {item.label}
+    </NavLink>
+  )
+}
+
+export function Sidebar({ isAdmin }: { isAdmin: boolean }) {
+  const location = useLocation()
+  const inAdmin = NAV_GROUPS[2]!.items.some((i) => location.pathname.startsWith(i.to))
+  const [adminOpen, setAdminOpen] = useState(readAdminOpen)
+  const open = adminOpen || inAdmin
+  const toggle = () => {
+    const next = !adminOpen
+    setAdminOpen(next)
+    try {
+      localStorage.setItem(ADMIN_OPEN_KEY, next ? '1' : '0')
+    } catch {
+      // preference only
+    }
+  }
+  return (
+    <nav aria-label="Primary" className="flex-1 overflow-y-auto p-2">
+      {NAV_GROUPS.map((group) => {
+        const items = group.items.filter((i) => !i.adminOnly || isAdmin)
+        if (group.id === 'admin') {
+          return (
+            <div key={group.id} className="mt-3">
+              <button
+                type="button"
+                aria-expanded={open}
+                onClick={toggle}
+                className="flex h-7 w-full items-center justify-between rounded-md px-3 text-[11px] font-semibold uppercase tracking-wider text-fg-2 hover:text-fg"
+              >
+                {group.label}
+                <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open ? 'rotate-180' : '')} aria-hidden />
+              </button>
+              {open && <div className="space-y-0.5">{items.map((i) => <SidebarLink key={i.to} item={i} />)}</div>}
+            </div>
+          )
+        }
+        return (
+          <div key={group.id} className={group.id === 'core' ? '' : 'mt-3'}>
+            {group.id !== 'core' && <p className="flex h-7 items-center px-3 text-[11px] font-semibold uppercase tracking-wider text-fg-2">{group.label}</p>}
+            <div className="space-y-0.5">{items.map((i) => <SidebarLink key={i.to} item={i} />)}</div>
+          </div>
+        )
+      })}
+    </nav>
+  )
+}
 
 function LiveDot({ status }: { status: LiveStatus }) {
   const label = status === 'live' ? 'Live updates on' : status === 'connecting' ? 'Connecting to live updates' : 'Live updates paused'
@@ -94,25 +197,11 @@ export function AppShell() {
         <div className="flex h-12 items-center gap-2 border-b border-line px-4 font-semibold tracking-tight">
           <Boxes className="h-4 w-4" aria-hidden /> AuraStock
         </div>
-        <nav aria-label="Primary" className="flex-1 space-y-0.5 overflow-y-auto p-2">
-          {NAV.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                cn(
-                  'flex h-9 items-center gap-2 rounded-md px-3 text-sm',
-                  isActive ? 'bg-surface font-semibold text-fg' : 'text-fg-2 hover:bg-surface hover:text-fg',
-                )
-              }
-            >
-              <Icon className="h-4 w-4" aria-hidden /> {label}
-            </NavLink>
-          ))}
-        </nav>
+        <Sidebar isAdmin={can(role, 'org.manage')} />
         <div className="border-t border-line p-2">
-          <p className="truncate px-3 pb-1 text-xs text-fg-2">{user?.email}</p>
+          <NavLink to="/profile" className="block truncate rounded-md px-3 pb-1 text-xs text-fg-2 hover:text-fg" title="Your profile">
+            {user?.email}
+          </NavLink>
           <button
             type="button"
             onClick={() => (unsynced > 0 ? setConfirmSignOut(true) : void signOut())}

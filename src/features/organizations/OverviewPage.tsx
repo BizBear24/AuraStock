@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { Package, Plus, ScanLine, Truck } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Bar, BarChart, Legend, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Button } from '@/components/ui/button'
@@ -80,12 +81,34 @@ export function OverviewPage() {
       <PageHeader
         title="Dashboard"
         description={`${organization.organizationName} · ${inventory.name}`}
-        actions={
-          <Button asChild>
-            <Link to="/products">View products</Link>
-          </Button>
-        }
       />
+      {/* The everyday jobs, one tap away. */}
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+        <Button asChild variant="primary" size="lg">
+          <Link to="/scan">
+            <ScanLine className="h-4 w-4" aria-hidden /> Scan item
+          </Link>
+        </Button>
+        {can(role, 'product.write') && (
+          <Button asChild size="lg">
+            <Link to="/products?new=1">
+              <Plus className="h-4 w-4" aria-hidden /> Add product
+            </Link>
+          </Button>
+        )}
+        <Button asChild size="lg">
+          <Link to="/products">
+            <Package className="h-4 w-4" aria-hidden /> Products
+          </Link>
+        </Button>
+        {can(role, 'stock.write') && (
+          <Button asChild size="lg">
+            <Link to="/transfers/new">
+              <Truck className="h-4 w-4" aria-hidden /> Send transfer
+            </Link>
+          </Button>
+        )}
+      </div>
       {summary.isPending && <LoadingState />}
       {summary.isError && <ErrorState message={errorMessage(summary.error)} onRetry={() => void summary.refetch()} />}
       {summary.data && (
