@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
+import { lazy, Suspense } from 'react'
 import { Package, Plus, ScanLine, Truck } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { Bar, BarChart, Legend, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Button } from '@/components/ui/button'
 import { PageHeader, Panel } from '@/components/ui/panel'
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states'
@@ -15,6 +15,9 @@ import { NotificationRow } from '@/features/notifications/NotificationsPage'
 import { DemoDataPanel } from './DemoDataPanel'
 import { countIncoming } from '@/features/transfers/api'
 import { useWorkspace } from './WorkspaceProvider'
+
+const CategoryChart = lazy(() => import('./DashboardCharts').then((m) => ({ default: m.CategoryChart })))
+const FlowChart = lazy(() => import('./DashboardCharts').then((m) => ({ default: m.FlowChart })))
 
 function Metric({ label, value, to, tone }: { label: string; value: number; to?: string; tone?: 'warn' | 'crit' }) {
   const body = (
@@ -156,20 +159,9 @@ export function OverviewPage() {
         {byCategory.isError && <ErrorState message={errorMessage(byCategory.error)} />}
         {byCategory.data && byCategory.data.length === 0 && <p className="text-sm text-fg-2">No products yet.</p>}
         {byCategory.data && byCategory.data.length > 0 && (
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={byCategory.data} margin={{ left: 0, right: 8, top: 4 }}>
-                <CartesianGrid stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="category" tick={{ fill: 'var(--fg-2)', fontSize: 12 }} stroke="var(--border)" />
-                <YAxis tick={{ fill: 'var(--fg-2)', fontSize: 12 }} stroke="var(--border)" />
-                <Tooltip
-                  contentStyle={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 6 }}
-                  cursor={{ fill: 'var(--surface)' }}
-                />
-                <Bar dataKey="units" name="Units" fill="var(--fg-2)" radius={[2, 2, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <Suspense fallback={<div className="h-64" aria-hidden />}>
+            <CategoryChart data={byCategory.data} />
+          </Suspense>
         )}
       </Panel>
 
@@ -179,19 +171,9 @@ export function OverviewPage() {
         {flow.isError && <ErrorState message={errorMessage(flow.error)} />}
         {flow.data && !flow.data.some((d) => d.units_in > 0 || d.units_out > 0) && <p className="text-sm text-fg-2">No movements in this period.</p>}
         {flow.data && flow.data.some((d) => d.units_in > 0 || d.units_out > 0) && (
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={flow.data} margin={{ left: 0, right: 8, top: 4 }}>
-                <CartesianGrid stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="day" tickFormatter={(d: string) => d.slice(5)} tick={{ fill: 'var(--fg-2)', fontSize: 12 }} stroke="var(--border)" />
-                <YAxis tick={{ fill: 'var(--fg-2)', fontSize: 12 }} stroke="var(--border)" />
-                <Tooltip contentStyle={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 6 }} cursor={{ fill: 'var(--surface)' }} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="units_in" name="In" fill="var(--ok)" radius={[2, 2, 0, 0]} />
-                <Bar dataKey="units_out" name="Out" fill="var(--fg-2)" radius={[2, 2, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <Suspense fallback={<div className="h-56" aria-hidden />}>
+            <FlowChart data={flow.data} />
+          </Suspense>
         )}
       </Panel>
 

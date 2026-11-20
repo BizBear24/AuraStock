@@ -55,7 +55,16 @@ Typecheck, lint and test before every commit: `npm run typecheck && npm run lint
   - [ ] **Needs your setup**: Google Drive requires a Google OAuth client ID (`VITE_GOOGLE_CLIENT_ID`, see below). Without it the Drive panel says it is not set up
   - [ ] **Not verified on real hardware/accounts**: Storage upload on the live project, Google consent with a real account, NFC on a real Android phone
   - [ ] Limits: scheduled backups run when an admin or owner has the app open (no server-side job); a backup is one JSON file (fine for tens of thousands of movements; very large organizations should export in parts); transfers are kept in backups but not recreated on restore
-- [ ] Phase 9 – PWA and polish
+- [x] Phase 9 – PWA and polish
+  - [x] Installable app: web manifest, real PNG icons (192, 512, maskable, Apple touch), standalone display, Scan/Products shortcuts
+  - [x] Offline start: Workbox service worker precaches the whole app shell; verified by stopping the server and by Playwright with the network off. Data offline continues to come from IndexedDB (Phase 5)
+  - [x] Updates: "A new version is available - Reload / Later" prompt (no silent reloads), hourly update checks for long-open tabs
+  - [x] Simpler navigation: Everyday (Dashboard, Products, Scan, Movements, Transfers) first, Tools next, Admin folded away; admin-only pages hidden from members who cannot use them; dashboard quick actions
+  - [x] Accessibility: WCAG AA contrast verified for every text colour in both themes (light amber darkened to pass), skip-to-content link, axe-core checks on the main screens with a control case proving the checker works
+  - [x] Performance: dashboard charts load separately (dashboard code 380 KB -> 7 KB); Excel, PDF, scanner and chart libraries load only when used
+  - [x] End-to-end: 16 Playwright tests (desktop Chrome and Pixel 7): redirects, validation, auth navigation, manifest and icons, offline start, no horizontal scroll, keyboard use
+  - [ ] Native app packaging (Capacitor) not started; the PWA can be installed from the browser on Android, iOS and desktop
+  - Local note: Vite 8 recommends Node 22.12+; this machine has 22.11 (works, warns). Vercel uses its own Node
 
 ## Demo data toggle
 
@@ -92,3 +101,24 @@ The client ID is public by design. No client secret is used, and no Google token
 - Backups → **Back up now** stores a verified copy in the private `backups` Storage bucket (`<organization id>/<backup id>.json`). Only admins and owners of that organization can read or write its folder.
 - **Schedule**: daily or weekly. Supabase's free plan has no server-side job runner for uploads, so a scheduled backup is taken by the app of whichever admin or owner has AuraStock open when it is due; `claim_auto_backup()` ensures it happens once per period.
 - **Restore** always creates new inventories ("… (restored YYYY-MM-DD)"), so it can be tried safely.
+
+## Definition of done: status
+
+| Requirement | Status |
+| --- | --- |
+| Register, log in, password reset | Done (Supabase Auth) |
+| Organizations and inventories | Done |
+| Product management | Done |
+| Barcode and QR scanning | Done; camera decoding not yet tried on your phone |
+| Transactionally correct stock, preserved history | Done; tested on real Postgres |
+| Search and filtering | Done |
+| Offline operations and reliable sync | Done; tested with IndexedDB and Playwright offline |
+| Permissions enforced in the database | Done; tested |
+| Valid exports (CSV, XLSX, PDF) | Done; round-trip tested |
+| Alerts | Done; hourly expiry job needs pg_cron enabled |
+| Installable PWA | Done |
+| Usable mobile layouts | Done; Playwright on a phone profile |
+| Automated tests for important workflows | Done: unit, component, accessibility, real-SQL database, end-to-end |
+| Documentation current | Done |
+
+Needs your action: apply migrations up to `0010` on the live project; set `VITE_GOOGLE_CLIENT_ID` for Google Drive; enable `pg_cron` for hourly expiry alerts; try camera, NFC and a two-person team test on real devices.

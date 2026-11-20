@@ -52,6 +52,8 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
+    // Thread workers: avoids "kill EPERM" crashes when forked workers are stopped on Windows.
+    pool: 'threads',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     css: false,
