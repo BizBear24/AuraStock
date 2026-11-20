@@ -193,6 +193,9 @@ export function AppShell() {
   useAutoBackup(organization.organizationId, organization.organizationName, role, snapshot.online)
   return (
     <div className="flex h-full">
+      <a href="#main" className="sr-only z-50 rounded-md bg-fg px-3 py-2 text-sm text-bg focus:not-sr-only focus:fixed focus:left-3 focus:top-3">
+        Skip to content
+      </a>
       <aside className="hidden w-56 shrink-0 flex-col border-r border-line bg-bg-2 md:flex">
         <div className="flex h-12 items-center gap-2 border-b border-line px-4 font-semibold tracking-tight">
           <Boxes className="h-4 w-4" aria-hidden /> AuraStock
@@ -236,7 +239,7 @@ export function AppShell() {
             </NavLink>
           </div>
         )}
-        <main className="min-h-0 flex-1 overflow-y-auto p-3 pb-20 md:p-6 md:pb-6">
+        <main id="main" tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto p-3 pb-20 outline-none md:p-6 md:pb-6">
           <Outlet />
         </main>
         <ConfirmDialog
